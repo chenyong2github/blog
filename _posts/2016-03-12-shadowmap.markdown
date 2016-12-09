@@ -25,8 +25,7 @@ Shadow map算法由两个绘制过程构成。第一个过程，在光源处设�
 
 ### 设置rendertarget和MVP矩阵
 这里我们使用1024x1024 16位的深度贴图来保存阴影图。16位保存深度信息一般情况下精度是足够的。
- 
- ```c++
+ ```
  1 // The framebuffer, which regroups 0, 1, or more textures, and 0 or 1 depth buffer.
  2  GLuint FramebufferName = 0;
  3  glGenFramebuffers(1, &FramebufferName);
