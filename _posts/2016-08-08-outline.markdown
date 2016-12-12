@@ -1,0 +1,218 @@
+---
+layout:     post
+title:      "模型勾边outline的实现与改进"
+date:       2016-08-08
+author:     "ChenYong"
+header-img: "img/post-bg-outline.jpg"
+tags:
+    - Unity
+    - 图形学
+    - Shader
+---
+
+### 简述
+在卡通渲染中一般会涉及到模型勾边。效率最高的方式是在shader中去做。render to texture的实现方式这里不讨论。
+
+Shader勾边实现流程大致为：对模型进行2遍（2个pass）绘制，第一遍（勾边pass）在vertex shader中对模型沿顶点法线方向放大，fragment shader设置输出颜色为勾边颜色；第二遍正常绘制模型，除被放大的部分外，其余被覆盖，这样就有了勾边的效果。
+
+## 实现
+
+```
+SubShader 
+{
+	Tags { "RenderType"="Opaque"}
+	
+	pass
+	{ 
+		ZWrite Off
+	
+		CGPROGRAM
+	       #include "UnityCG.cginc"	
+	
+		struct v2f_outline {
+			float4 pos : SV_POSITION;
+		};			
+	
+		v2f_outline vert_outline(appdata_full v) {
+			// vertex data scaled according to normal direction
+			v2f_outline o;
+			v.vertex.xyz += v.normal*0.01;
+			
+			o.pos = mul(UNITY_MATRIX_MVP, v.vertex);		
+			return o;
+		}
+		half4 frag_outline( v2f_outline i) :COLOR 
+		{
+			return half4(0, 1, 0, 1);
+		}
+	
+		#pragma vertex vert_outline
+		#pragma fragment frag_outline
+		#pragma fragmentoption ARB_precision_hint_fastest 
+	
+		ENDCG
+	}
+	
+	Pass 
+	{
+		CGPROGRAM
+	
+		v2f_full vert (appdata_full v) 
+		{
+			v2f_full o;
+			o.pos = mul (UNITY_MATRIX_MVP, v.vertex);
+			o.uv.xy = TRANSFORM_TEX(v.texcoord,_MainTex);			
+			
+			return o; 
+		}
+			
+		fixed4 frag (v2f_full i) : COLOR0 
+		{						
+			fixed4 tex = tex2D (_MainTex, i.uv.xy);			
+			return tex;		
+		}	
+	
+		#pragma vertex vert
+		#pragma fragment frag
+		#pragma multi_compile LIGHTMAP_OFF LIGHTMAP_ON
+		#pragma fragmentoption ARB_precision_hint_fastest 
+	
+		ENDCG
+	}
+}
+```
+
+其中需要注意的是勾边pass的ZWrite设为关闭，保证接下来的正常绘制不会因为深度检测被剔除。
+![这里写图片描述](http://img.blog.csdn.net/20160808083301271)
+## 改进
+### 1．如何保证勾边在不同的摄像机距离下大小一致？
+![这里写图片描述](http://img.blog.csdn.net/20160808083607911)
+之前实现的放大绘制是在模型空间下做的，这使得勾边跟模型一样存在近大远小的问题，远处模型的勾边会比近处模型的勾边细，所以我们需要对勾边根据离摄像机的远近进行一个缩放。
+
+```
+v2f_outline vert_outline(appdata_full v) {
+	// vertex data scaled according to normal direction
+	v2f_outline o;
+	o.pos = mul(UNITY_MATRIX_MVP, v.vertex);
+	float3 norm   = mul ((float3x3)UNITY_MATRIX_IT_MV, v.normal);
+	float3 offset = TransformViewToProjection(normalize(norm.xyz));		
+	o.pos.xy += normalize(offset) * 0.01 * o.pos.w;			
+
+	return o;
+}
+```
+
+模型放大放到裁剪空间去做，o.pos存错的是裁剪空间的顶点信息，其中o.pos.w存储了顶点与摄像机的距离，可做为一个模型放大系数。
+![这里写图片描述](http://img.blog.csdn.net/20160808083928227) 
+
+### 2．如何解决在与其他模型重叠的情况下出现不合理的勾边？
+![这里写图片描述](http://img.blog.csdn.net/20160808084017166) 
+
+某个摄像机距离下重叠的边界出现勾边，移动摄像机勾边交替闪烁，时有时无，这是z-fighting现象，解决的办法是设置勾边pass的Offset语句。
+
+```
+pass
+{ 
+	Offset 3, 0
+	ZWrite Off
+	...
+```
+![这里写图片描述](http://img.blog.csdn.net/20160808085100496)
+### 3．如何在被遮挡的情况下显示勾边？
+
+物体被遮挡，仍然需要显示，需要设置勾边pass的语句ZTest为Always，深度检测一直通过，这样勾边pass的片段不会被深度剔除。
+
+```
+pass
+{ 
+	Offset 3, 0
+	ZWrite Off
+	ZTest Always
+	...
+```
+![这里写图片描述](http://img.blog.csdn.net/20160808084457236) 
+
+在这个基础上如果只需显示被遮挡的勾边，就需要利用Stencil Buffer。绘制顺序需要反过来：先执行正常绘制，写入stencil值，然后执行勾边pass，对stencil的值做比较，如果相等，则片段被stencil剔除，这样，除了放大的部分外，其余部分都被剔除了。
+
+```
+SubShader 
+{
+	Tags { "RenderType"="Opaque"}
+
+	Pass 
+	{			
+		Stencil {
+			Ref 2
+			Comp always
+			Pass replace
+			ZFail replace
+		}
+		CGPROGRAM
+	
+		v2f_full vert (appdata_full v) 
+		{
+			v2f_full o;
+			o.pos = mul (UNITY_MATRIX_MVP, v.vertex);
+			o.uv.xy = TRANSFORM_TEX(v.texcoord,_MainTex);			
+			
+			return o; 
+		}
+			
+		fixed4 frag (v2f_full i) : COLOR0 
+		{						
+			fixed4 tex = tex2D (_MainTex, i.uv.xy);			
+			return tex;		
+		}	
+	
+		#pragma vertex vert
+		#pragma fragment frag
+		#pragma multi_compile LIGHTMAP_OFF LIGHTMAP_ON
+		#pragma fragmentoption ARB_precision_hint_fastest 
+
+		ENDCG
+	}
+	
+	pass
+	{ 
+		 Stencil {
+			 Ref 2
+			 Comp NotEqual
+		 }
+		 
+		Offset 3, 0
+		ZWrite Off
+		ZTest Always
+	
+		CGPROGRAM
+        #include "UnityCG.cginc"	
+
+		struct v2f_outline {
+			float4 pos : SV_POSITION;
+		};			
+	
+		v2f_outline vert_outline(appdata_full v) {
+			// vertex data scaled according to normal direction
+			v2f_outline o;
+			o.pos = mul(UNITY_MATRIX_MVP, v.vertex);
+			float3 norm   = mul ((float3x3)UNITY_MATRIX_IT_MV, v.normal);
+			float3 offset = TransformViewToProjection(normalize(norm.xyz));		
+			o.pos.xy += normalize(offset) * 0.01 * o.pos.w;			
+
+			return o;
+		}
+
+		half4 frag_outline( v2f_outline i) :COLOR 
+		{
+			return half4(0, 1, 0, 1);
+		}
+	
+		#pragma vertex vert_outline
+		#pragma fragment frag_outline
+		#pragma fragmentoption ARB_precision_hint_fastest 
+	
+		ENDCG
+	}
+}
+```
+![这里写图片描述](http://img.blog.csdn.net/20160808084953139)
+ 
