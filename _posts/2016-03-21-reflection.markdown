@@ -79,6 +79,7 @@ private RenderTexture CreateTextureFor(Camera cam)
 ```
  
 2.在LateUpdate中根据当前摄像机去构造反射摄像机变换矩阵，涉及到反射面reflectiveSurface的选取，示例中是选取合适的路面做反射面，然后手动调用绘制，绘制前设置前面剔除，绘制完置回。
+
 ```
 private void RenderReflectionFor (Camera cam, Camera reflectCamera)
 {
@@ -117,6 +118,7 @@ private void RenderReflectionFor (Camera cam, Camera reflectCamera)
 #### Shader
 
 反射面的材质接受反射相机绘制好的RenderTexture做为贴图对其采样。示例中的反射面——地面shader增加了uv扰动参数和噪声贴图用来达到扭曲效果，还叠加了一个水花效果，这样的话使得雨天地面反射更加真实，而不是干净得像一面镜子。
+
 ``` 
 v2f_full vert (appdata_full v)
 {
@@ -135,8 +137,8 @@ v2f_full vert (appdata_full v)
 
 fixed4 frag (v2f_full i) : COLOR0
 {		
-	fixed4 nrml = tex2D(_Normal, i.normalScrollUv.xy);        
-	nrml = (nrml - 0.5) * 0.1;             
+	fixed4 nrml = tex2D(_Normal, i.normalScrollUv.xy);
+	nrml = (nrml - 0.5) * 0.1;
 
 	//UV扰动，在RenderTexture采样                                                                                                                             
 	fixed4 rtRefl = tex2D (_ReflectionTex, (i.screen.xy / i.screen.w) + nrml.xy);                                         
