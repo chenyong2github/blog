@@ -119,7 +119,7 @@ private void RenderReflectionFor (Camera cam, Camera reflectCamera)
 
 反射面的材质接受反射相机绘制好的RenderTexture做为贴图对其采样。示例中的反射面——地面shader增加了uv扰动参数和噪声贴图用来达到扭曲效果，还叠加了一个水花效果，这样的话使得雨天地面反射更加真实，而不是干净得像一面镜子。
 
-``` 
+```
 v2f_full vert (appdata_full v)
 {
 	…
