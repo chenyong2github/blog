@@ -135,7 +135,8 @@ Shadow map算法由两个绘制过程构成。第一个过程，在光源处设�
 2 gl_Position =  MVP * vec4(vertexPosition_modelspace,1);
 3 
 4 // Same, but with the light's view matrix
-5 ShadowCoord = DepthBiasMVP * vec4(vertexPosition_modelspace,1);`
+5 ShadowCoord = DepthBiasMVP * vec4(vertexPosition_modelspace,1);
+```
 
 片段shader也很简单：
 •	texture( shadowMap, ShadowCoord.xy ).z值是光源与最近遮挡物的距离
@@ -220,6 +221,7 @@ shadow acne问题不存在了，但是这种通过增加偏移量解决shadow ac
 
 #### Poisson Sampling
 比较容易的做法是采样阴影图N次，配合PCF，可以得到比较好的效果，哪怕是N很小。这里的代码是4次采样（PCF下，每次采样GPU采样了4~5次，总采样次数是16~20次）：
+
 ```
 1 for (int i=0;i<4;i++){
 2   if ( texture( shadowMap, ShadowCoord.xy + poissonDisk[i]/700.0 ).z  <  ShadowCoord.z-bias ){
@@ -228,6 +230,7 @@ shadow acne问题不存在了，但是这种通过增加偏移量解决shadow ac
 5 }
 ```
 poissonDisk 是一个2维向量数组 ：
+
 ```
 1 vec2 poissonDisk[4] = vec2[](
 2   vec2( -0.94201624, -0.39906216 ),
@@ -236,6 +239,7 @@ poissonDisk 是一个2维向量数组 ：
 5   vec2( 0.34495938, 0.29387760 )
 6 );
 ```
+
 采样次数N会影响到最后生成的片段阴影或明或暗一些：
 ![这里写图片描述](/img/in-post/shadowmap/20160312105228657.jpg) 
 
