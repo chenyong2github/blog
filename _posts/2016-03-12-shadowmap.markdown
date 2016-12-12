@@ -3,7 +3,7 @@ layout:     post
 title:      "Shadow mapping"
 date:       2016-03-12
 author:     "ChenYong"
-header-img: "img/post-bg-js-version.jpg"
+header-img: "img/post-bg-shadowmap.jpg"
 tags:
     - OpenGL
     - 图形学
