@@ -5,8 +5,8 @@ header-img: img/home-bg.jpg
 email: yongchen1983.126.com@gmail.com
 description: ""
 keyword: ""
-url: "candycat1992.github.io"              # your host, for absolute URL
-baseurl: ""                             # for example, '/blog' if your blog hosted on 'host/blog'
+url: "blog.chenyong.me"              # your host, for absolute URL
+baseurl: ""                          # for example, '/blog' if your blog hosted on 'host/blog'
 timezone: CN
 
 gems: [jekyll-paginate]
