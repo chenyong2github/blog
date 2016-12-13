@@ -7,6 +7,7 @@ header-img: "img/post-bg-normalmap.jpg"
 tags:
     - 图形学
     - Shader
+    - 翻译
 ---
 
 法线贴图技术的使用可以使得低面模型具有与高模接近的光照表现。这可极大的提高实时渲染的效率。下面的截图做了很好的对比： 

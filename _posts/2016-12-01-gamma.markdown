@@ -6,6 +6,7 @@ author:     "ChenYong"
 header-img: "img/post-bg-gamma.jpg"
 tags:
     - 图形学
+    - 翻译
 ---
 
 随着真实性更高的基于物理渲染（PBR）的到来，线性空间（Linear space）光照计算也越来越被经常提及。虽然线性空间和与之“对立”的伽马空间（gamma space）是简单而重要的概念，但很多开发者对它们的真正意义并不了解。这篇文档将会介绍伽马空间和线性空间、它们之间的区别以及在Unity引擎中的应用。
