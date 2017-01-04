@@ -14,8 +14,41 @@ tags:
 上图分别展示了一张光碟在不同光照着色算法下的表现：最左边为常规的各项同性反射（isotropic reflection），中间和最右边为环形微表面或放射状微表面下的各向异性反射。很明显，右边两张跟我们真实生活的光碟光照表现更接近。
 
 ### 光照模型
-Heidrich和Seidel在前人的基础上提出了各向异性光照模型。$\vec T$
- 
+根据传统的Phong光照模型，表面上任意一点的光照强度$I_{o}$为环境光、漫反射和高光三者之和:
+
+$$
+	I_{o} = I_{ambient} + I_{diffuse} + I_{specular}
+$$
+
+其中：
+
+$$
+	I_{diffuse} = L \cdot N
+$$
+
+$$
+	I_{specular} = (V \cdot R)^s
+$$
+
+视角向量 $\vec{V}$, 表面法线 $\vec{N}$, 灯光向量$\vec{L}$以及它的反射向量$\vec{R}$, $s$为表面粗糙度。
+
+而在各向异性光照模型中，用切线向量$\vec{T}$表示物体表面的丝状划痕或纤维的方向，每根“丝”被认为具有无数个法线分布在垂直于$\vec{T}$的法线表面，并且选定参与光照计算的法线为与光照方向$\vec{L}$与$\vec{T}$共面的$\vec{N'}$，$\vec{N'}$即为$\vec{L}$在法线平面的投影。见下图：
+![这里写图片描述](/img/in-post/aniso/aniso2.jpg)
+![这里写图片描述](/img/in-post/aniso/aniso3.jpg)
+
+那么：
+
+$$
+	I_{diffuse} = L \cdot N'  = \sqrt{1 - (L \cdot T)^2}
+$$
+
+$$
+	I_{specular} = (V \cdot R)^s = \sqrt{1 - (L \cdot T)^2} * \sqrt{1 - (V \cdot T)^2} - (L \cdot T)(V \cdot T)
+$$
+
+推导：
+
+
 
 附原文链接：
 https://www.cs.ubc.ca/~heidrich/Papers/IMDSP.98.pdf
