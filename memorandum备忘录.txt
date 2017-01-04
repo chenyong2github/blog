@@ -1,9 +1,12 @@
 ***********************github***************************
 https://github.com/Huxpro/huxblog-boilerplate //博客模板
 http://www.pchou.info/ssgithubPage/2013-01-03-build-github-blog-page-01.html //一步一步github
+http://yanping.me/cn/blog/2012/03/10/octopress-with-latex/
+http://www.onemathematicalcat.org/MathJaxDocumentation/TeXSyntax.htm
 
 gem install github-pages
 gem install wdm
+gem install kramdown //数学公式
 
 jekyll serve --watch
 
