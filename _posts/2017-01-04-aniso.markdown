@@ -3,13 +3,13 @@ layout:     post
 title:      "各向异性光照"
 date:       2017-01-04
 author:     "ChenYong"
-header-img: "img/post-bg-gamma.jpg"
+header-img: "img/post-bg-aniso.jpg"
 tags:
     - 图形学
     - Shader
 ---
 
-我们日常生活中有很多物体呈现各向异性反射效果。比如：拉丝金属，毛发，光碟等。一般这种各向异性的反射表现是由物体表面的微表面导致的：物体表面主要由大量的方向一致的细长凸起或凹槽微表面组成。比如，拉丝金属物件表面由大量平行的丝状划痕组成；光碟的表面由一圈一圈的环形细小轨道（用于存放数据）组成；头发的表面由大量的头发丝组成等。沿着这些划痕或纤维的法线分布不同于垂直于表面的法线分布，导致物体整体的光照反射表现呈现各向异性。
+我们日常生活中有很多物体呈现各向异性反射效果。比如：拉丝金属，毛发，光碟等。一般这种各向异性的反射表现是由物体表面的微表面特性导致的：物体表面主要由大量的方向一致的细长凸起或凹槽微表面组成。比如，拉丝金属物件表面由大量平行的丝状划痕组成；光碟的表面由一圈一圈的环形细小轨道（用于存放数据）组成；头发的表面由大量的头发丝组成等。沿着这些划痕或纤维的法线分布不同于垂直于表面的法线分布，使得物体整体的光照反射表现呈现各向异性。
 ![这里写图片描述](/img/in-post/aniso/aniso1.jpg)
 上图分别展示了一张光碟在不同光照着色算法下的表现：最左边为常规的各项同性反射（isotropic reflection），中间和最右边为环形微表面或放射状微表面下的各向异性反射。很明显，右边两张跟我们真实生活的光碟光照表现更接近。
 
@@ -32,11 +32,11 @@ $$
 
 视角向量 $\vec{V}$, 表面法线 $\vec{N}$, 灯光向量$\vec{L}$以及它的反射向量$\vec{R}$, $s$为表面粗糙度。
 
-而在各向异性光照模型中，用切线向量$\vec{T}$表示物体表面的丝状划痕或纤维的方向，每根“丝”被认为具有无数个法线分布在垂直于$\vec{T}$的法线表面，并且选定参与光照计算的法线为与光照方向$\vec{L}$与$\vec{T}$共面的$\vec{N'}$，$\vec{N'}$即为$\vec{L}$在法线平面的投影。见下图：
+而在各向异性光照模型中，用切线向量$\vec{T}$表示物体表面的丝状划痕或纤维的方向，每根“丝”被认为具有垂直于$\vec{T}$的法线表面，并且选定参与光照计算的法线为与光照方向$\vec{L}$与$\vec{T}$共面的$\vec{N'}$，$\vec{N'}$即为$\vec{L}$在法线平面的投影。见下图：
 ![这里写图片描述](/img/in-post/aniso/aniso2.jpg)
 ![这里写图片描述](/img/in-post/aniso/aniso3.jpg)
 
-那么：
+用$\vec{N'}$代替$\vec{N}$得：
 
 $$
 	I_{diffuse} = L \cdot N'  = \sqrt{1 - (L \cdot T)^2}
@@ -46,10 +46,125 @@ $$
 	I_{specular} = (V \cdot R)^s = \sqrt{1 - (L \cdot T)^2} * \sqrt{1 - (V \cdot T)^2} - (L \cdot T)(V \cdot T)
 $$
 
-推导：
+### 推导：
+![这里写图片描述](/img/in-post/aniso/aniso4.jpg)
+根据余弦的几何意义和三角变换：
 
+$$
+	L \cdot N' = \cos \angle(L,N') = \sin(\pi/2 - \angle (L,N')) = \sin \angle (L,T) = \sqrt{1 - (\cos \angle (L,T))^2} = \sqrt{1 - (L \cdot T)^2}
+$$
+
+同理根据三角和差公式：
+$$
+	\cos (\alpha + \beta) = \cos \alpha * \cos \beta - \sin \alpha * \sin \beta 
+$$
+可推导出$(V \cdot R)^s$。
+
+### 实践
+Unity Shader代码：
+
+```
+Shader "Custom/Aniso Kajiya" {
+	SubShader 
+	{
+		Tags 
+		{
+			"RenderType"="Opaque"
+		}
+       
+		Pass
+		{
+			Tags{"LightMode" = "ForwardBase"}
+
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			#include "UnityCG.cginc"
+			#include "AutoLight.cginc"
+			uniform float4 _LightColor0;
+			struct VertexInput {
+				float4 vertex : POSITION;
+				float3 normal : NORMAL;
+				float4 tangent : TANGENT;
+				float2 texcoord0 : TEXCOORD0;
+			};
+			struct VertexOutput {
+				float4 pos : SV_POSITION;
+				float2 uv0 : TEXCOORD0;
+				float4 posWorld : TEXCOORD1;
+				float3 normalDir : TEXCOORD2;
+				float3 tangentDir : TEXCOORD3;
+				float3 binormalDir : TEXCOORD4;
+				LIGHTING_COORDS(5,6)
+			};
+			VertexOutput vert(VertexInput v) {
+				VertexOutput o = (VertexOutput)0;
+				o.uv0 = v.texcoord0;
+				o.normalDir = mul(unity_ObjectToWorld, float4(v.normal,0)).xyz;
+				o.tangentDir = normalize(mul(unity_ObjectToWorld, float4(v.tangent.xyz, 0.0)).xyz);
+				o.binormalDir = normalize(cross(o.normalDir, o.tangentDir) * v.tangent.w);
+				o.posWorld = mul(unity_ObjectToWorld, v.vertex);
+				o.pos = mul(UNITY_MATRIX_MVP, v.vertex);
+				TRANSFER_VERTEX_TO_FRAGMENT(o)
+				return o;
+			}
+			fixed4 frag(VertexOutput i) : COLOR{
+				i.normalDir = normalize(i.normalDir);
+				/////// Vectors:
+				float3 viewDirection = normalize(_WorldSpaceCameraPos.xyz - i.posWorld.xyz);
+				float3 normalDirection = i.normalDir;
+				float3 lightDirection = normalize(lerp(_WorldSpaceLightPos0.xyz, _WorldSpaceLightPos0.xyz - i.posWorld.xyz,_WorldSpaceLightPos0.w));
+				
+				float3 halfDirection = normalize(viewDirection + lightDirection);
+				float NdotL = max(0, dot(normalDirection, lightDirection));
+
+				////// Lighting:
+				float attenuation = LIGHT_ATTENUATION(i);
+				float3 attenColor = attenuation * _LightColor0.xyz;				
+				
+				////// Aniso Specular:
+				fixed3 T = i.tangentDir;
+				fixed3 L = lightDirection;
+				fixed3 V = viewDirection;
+
+				fixed TdotL = dot(T, L);
+				fixed TdotV = dot(T, V);
+
+				fixed sq1 = sqrt(1.0 - pow(TdotL, 2));
+				fixed sq2 = sqrt(1.0 - pow(TdotV, 2));
+				fixed aniso = sq1 * sq2 + TdotL * TdotV;
+
+				aniso = pow(aniso, 128);
+
+				float3 specular = aniso* attenColor;
+
+				////// Blin-phong Specular:
+				//fixed blin = max(0, dot(normalDirection, halfDirection));
+				//blin = pow(blin, 128);
+				//specular = blin* attenColor;
+
+				/////// Diffuse:
+				float3 diffuse = max(0.0, NdotL) * attenColor * 0.3;
+				/// Final Color:
+				float3 finalColor = diffuse + specular;
+				return fixed4(finalColor * 1,0);
+			}
+			ENDCG
+		}
+	}
+	FallBack "Diffuse"
+	CustomEditor "ShaderForgeMaterialInspector"
+}
+
+```
+结果：
+![这里写图片描述](/img/in-post/aniso/aniso5.jpg)
+
+附项目角色根据Kajiya-Kay光照模型渲出的头发前后对比：
+![这里写图片描述](/img/in-post/aniso/aniso6.jpg)
 
 
 附原文链接：
+
 https://www.cs.ubc.ca/~heidrich/Papers/IMDSP.98.pdf
 ftp://ftp.sgi.com/opengl/contrib/blythe/advanced99/notes/node154.html
