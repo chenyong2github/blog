@@ -1,0 +1,201 @@
+---
+layout:     post
+title:      "Unity PBS代码剖析"
+date:       2017-02-07
+author:     "ChenYong"
+header-img: "img/post-bg-pbs.jpg"
+tags:
+    - Unity
+    - Shader
+    - PBS
+---
+
+### 漫反射和镜面反射能量守恒
+
+光线要不进入物体次表面发生生漫反射，要不在表面发生镜面反射，是一个互斥的关系，而且离开表面的光不可能比原始的入射光要亮，符合能量守恒。
+
+UnityStandardUtils.cginc代码：
+```
+// Diffuse/Spec Energy conservation
+inline half3 EnergyConservationBetweenDiffuseAndSpecular (half3 albedo, half3 specColor, out half oneMinusReflectivity)
+{
+	oneMinusReflectivity = 1 - SpecularStrength(specColor);
+	#if !UNITY_CONSERVE_ENERGY
+		return albedo;
+	#elif UNITY_CONSERVE_ENERGY_MONOCHROME
+		return albedo * oneMinusReflectivity;
+	#else
+		return albedo * (half3(1,1,1) - specColor);
+	#endif
+}
+```
+上面代码中的1表示100%光能，用1减去镜面反射部分，得到漫反射部分。specColor一般由高光贴图得到，高光贴图用于精确控制物体表面的镜面反射程度。当specColor为白色时（SpecularStrength返回1），结果漫反射比例为0，发生全反射。Unity的PBS还提供一种metallic的workflow，镜面反射程度由反映物体金属性的metallic值控制。
+
+### 全局光照
+相对于主光源的实时光照计算（direct lighting），这里讨论的全局光照（Global Illumination）指的是结合离线生成的光照数据做的光照计算（indirect lighting）。
+
+UnityGlobalIllumination.cginc代码：
+
+```
+inline UnityGI UnityGI_Base(UnityGIInput data, half occlusion, half3 normalWorld)
+{
+	UnityGI o_gi;
+	ResetUnityGI(o_gi);
+
+	.....
+
+	#if UNITY_SHOULD_SAMPLE_SH
+		o_gi.indirect.diffuse = ShadeSHPerPixel (normalWorld, data.ambient, data.worldPos);
+	#endif
+
+	#if defined(LIGHTMAP_ON)
+		// Baked lightmaps
+		fixed4 bakedColorTex = UNITY_SAMPLE_TEX2D(unity_Lightmap, data.lightmapUV.xy);
+		half3 bakedColor = DecodeLightmap(bakedColorTex);
+
+		#ifdef DIRLIGHTMAP_COMBINED
+			......
+
+		#elif DIRLIGHTMAP_SEPARATE
+			.....
+
+		#else // not directional lightmap
+			o_gi.indirect.diffuse = bakedColor;
+
+			......
+		#endif
+	#endif
+
+	#ifdef DYNAMICLIGHTMAP_ON
+		......
+	#endif
+
+	o_gi.indirect.diffuse *= occlusion;
+	return o_gi;
+}
+```
+上面列出最常见的Baked GI（也称为Lightmap）光照计算，从Lightmap贴图或Light probe中取到的颜色值贡献为indirect lighting的diffuse。
+
+```
+inline half3 UnityGI_IndirectSpecular(UnityGIInput data, half occlusion, half3 normalWorld, Unity_GlossyEnvironmentData glossIn)
+{
+	half3 specular;
+
+	#if UNITY_SPECCUBE_BOX_PROJECTION
+		// we will tweak reflUVW in glossIn directly (as we pass it to Unity_GlossyEnvironment twice), so keep original to pass into BoxProjectedCubemapDirection
+		half3 originalReflUVW = glossIn.reflUVW;
+	#endif
+
+	#if UNITY_SPECCUBE_BOX_PROJECTION
+		glossIn.reflUVW = BoxProjectedCubemapDirection (originalReflUVW, data.worldPos, data.probePosition[0], data.boxMin[0], data.boxMax[0]);
+	#endif
+
+	#ifdef _GLOSSYREFLECTIONS_OFF
+		specular = unity_IndirectSpecColor.rgb;
+	#else
+		half3 env0 = Unity_GlossyEnvironment (UNITY_PASS_TEXCUBE(unity_SpecCube0), data.probeHDR[0], glossIn);
+		#if UNITY_SPECCUBE_BLENDING
+			......
+		#else
+			specular = env0;
+		#endif
+	#endif
+
+	return specular * occlusion;
+}
+```
+上面代码中的Unity_GlossyEnvironment负责从烘焙好的Reflection probe中读取颜色值，贡献为indirect lighting的specular。
+
+### BRDF
+Unity对移动平台的BRDF（Bidirectional Reflectance Distribution Function）实现是在Minimalist CookTorrance BRDF模型基础上的修改版本。
+
+CookTorrance模型基于微表面理论，单个微表面反射值公式为：
+
+$$
+	f_{r} = \frac{k_{d}}{\pi} + k_{s} \frac{(n+1)(\vec{N} \cdot \vec{H})^n}{8 \pi (\vec{L} \cdot \vec{H})^3} \tag{1}
+$$
+
+物体表面的最终的反射值为所有微表面反射值积分，公式为：
+
+$$
+	F = \intop_{\Omega} f_{r} \cos {\theta} \text{ d}w \tag{2}
+$$
+
+UnityStandardBRDF.cginc代码：
+
+```
+// Based on Minimalist CookTorrance BRDF
+// Implementation is slightly different from original derivation: http://www.thetenthplanet.de/archives/255
+//
+// * BlinnPhong as NDF
+// * Modified Kelemen and Szirmay-​Kalos for Visibility term
+// * Fresnel approximated with 1/LdotH
+half4 BRDF2_Unity_PBS (half3 diffColor, half3 specColor, half oneMinusReflectivity, half oneMinusRoughness,
+	half3 normal, half3 viewDir,
+	UnityLight light, UnityIndirect gi)
+{
+	half3 halfDir = Unity_SafeNormalize (light.dir + viewDir);
+
+	half nl = light.ndotl;
+	half nh = BlinnTerm (normal, halfDir);
+	half nv = DotClamped (normal, viewDir);
+	half lh = DotClamped (light.dir, halfDir);
+
+	half roughness = 1-oneMinusRoughness;
+	half specularPower = RoughnessToSpecPower (roughness);
+	// Modified with approximate Visibility function that takes roughness into account
+	// Original ((n+1)*N.H^n) / (8*Pi * L.H^3) didn't take into account roughness 
+	// and produced extremely bright specular at grazing angles
+
+	// HACK: theoretically we should divide by Pi diffuseTerm and not multiply specularTerm!
+	// BUT 1) that will make shader look significantly darker than Legacy ones
+	// and 2) on engine side "Non-important" lights have to be divided by Pi to in cases when they are injected into ambient SH
+	// NOTE: multiplication by Pi is cancelled with Pi in denominator
+
+	half invV = lh * lh * oneMinusRoughness + roughness * roughness; // approx ModifiedKelemenVisibilityTerm(lh, 1-oneMinusRoughness);
+	half invF = lh;
+	half specular = ((specularPower + 1) * pow (nh, specularPower)) / (8 * invV * invF + 1e-4h);
+	if (IsGammaSpace())
+		specular = sqrt(max(1e-4h, specular));
+
+	// surfaceReduction = Int D(NdotH) * NdotH * Id(NdotL>0) dH = 1/(realRoughness^2+1)
+	half realRoughness = roughness*roughness;		// need to square perceptual roughness
+	
+	// 1-0.28*x^3 as approximation for (1/(x^4+1))^(1/2.2) on the domain [0;1]
+	// 1-x^3*(0.6-0.08*x)   approximation for 1/(x^4+1)
+	half surfaceReduction = IsGammaSpace() ? 0.28 : (0.6-0.08*roughness);
+	surfaceReduction = 1.0 - realRoughness*roughness*surfaceReduction;
+	
+	// Prevent FP16 overflow on mobiles
+#if SHADER_API_GLES || SHADER_API_GLES3
+	specular = clamp(specular, 0.0, 100.0);
+#endif
+
+#if defined(_SPECULARHIGHLIGHTS_OFF)
+	specular = 0.0;
+#endif
+
+	half grazingTerm = saturate(oneMinusRoughness + (1-oneMinusReflectivity));
+    half3 color =	(diffColor + specular * specColor) * light.color * nl
+    				+ gi.diffuse * diffColor
+					+ surfaceReduction * gi.specular * FresnelLerpFast (specColor, grazingTerm, nv);
+
+	return half4(color, 1);
+}
+```
+
+
+上面代码最后的（diffColor + specular * specColor）对应BRDF模型公式(2)中的
+$$
+	\intop_{\Omega} f_{r} \text{ d}w
+$$
+后面乘于的nl是对应$$\cos {\theta}$$。
+
+最后的color加上了全局光照模块返回diffuse和specular，值得注意的是Fresnel部分是与indirect的specular做的乘法。
+
+
+参考文献：
+
+http://www.thetenthplanet.de/archives/255
+
+http://simonstechblog.blogspot.tw/2011/12/microfacet-brdf.html
