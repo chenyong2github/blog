@@ -12,7 +12,7 @@ tags:
 
 ### 漫反射和镜面反射能量守恒
 
-光线要不进入物体次表面发生生漫反射，要不在表面发生镜面反射，是一个互斥的关系，而且离开表面的光不可能比原始的入射光要亮，符合能量守恒。
+光线要不进入物体次表面发生生漫反射，要不在表面发生镜面反射。漫反射和镜面反射是一个互斥的关系，而且离开表面的光不可能比原始的入射光要亮，符合能量守恒。
 
 UnityStandardUtils.cginc代码：
 
@@ -31,7 +31,7 @@ inline half3 EnergyConservationBetweenDiffuseAndSpecular (half3 albedo, half3 sp
 }
 ```
 
-上面代码中的1表示100%光能，用1减去镜面反射部分，得到漫反射部分。specColor一般由高光贴图得到，高光贴图用于精确控制物体表面的镜面反射程度。当specColor为白色时（SpecularStrength返回1），结果漫反射比例为0，发生全反射。Unity的PBS还提供一种metallic的workflow，镜面反射程度由反映物体金属性的metallic值控制。
+上面代码中的1表示100%光能，用1减去镜面反射部分，得到漫反射部分。specColor一般由高光贴图得到，高光贴图用于精确控制物体表面的镜面反射程度。当specColor为白色时（SpecularStrength返回1），结果漫反射比例为0，发生全反射。Unity的PBS还提供一种metallic的workflow，镜面反射程度由物体金属性metallic值控制。
 
 ### 全局光照
 相对于主光源的实时光照计算（direct lighting），这里讨论的全局光照（Global Illumination）指的是结合离线生成的光照数据做的光照计算（indirect lighting）。
@@ -111,7 +111,7 @@ inline half3 UnityGI_IndirectSpecular(UnityGIInput data, half occlusion, half3 n
 上面代码中的Unity_GlossyEnvironment负责从烘焙好的Reflection probe中读取颜色值，贡献为indirect lighting的specular。
 
 ### BRDF
-Unity对移动平台的BRDF（Bidirectional Reflectance Distribution Function）实现是在Minimalist CookTorrance BRDF模型基础上的修改版本。
+Unity在移动平台上的BRDF（Bidirectional Reflectance Distribution Function）实现是在Minimalist CookTorrance BRDF模型基础上的修改版本。
 
 CookTorrance模型基于微表面理论，单个微表面反射值公式为：
 
@@ -119,7 +119,7 @@ $$
 	f_{r} = \frac{k_{d}}{\pi} + k_{s} \frac{(n+1)(\vec{N} \cdot \vec{H})^n}{8 \pi (\vec{L} \cdot \vec{H})^3} \tag{1}
 $$
 
-物体表面的最终的反射值为所有微表面反射值积分，公式为：
+物体表面的最终反射值为所有微表面反射值积分，公式为：
 
 $$
 	F = \intop_{\Omega} f_{r} \cos {\theta} \text{ d}w \tag{2}
@@ -194,7 +194,7 @@ $$
 $$
 后面乘于的nl是对应$$\cos {\theta}$$。
 
-最后的color加上了全局光照模块返回diffuse和specular，值得注意的是Fresnel部分是与indirect的specular做的乘法。
+color返回值加上了全局光照模块返回diffuse和specular，值得注意的是Fresnel部分是与indirect的specular做的乘法。
 
 
 参考文献：
