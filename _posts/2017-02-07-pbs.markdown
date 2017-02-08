@@ -15,6 +15,7 @@ tags:
 光线要不进入物体次表面发生生漫反射，要不在表面发生镜面反射，是一个互斥的关系，而且离开表面的光不可能比原始的入射光要亮，符合能量守恒。
 
 UnityStandardUtils.cginc代码：
+
 ```
 // Diffuse/Spec Energy conservation
 inline half3 EnergyConservationBetweenDiffuseAndSpecular (half3 albedo, half3 specColor, out half oneMinusReflectivity)
@@ -29,6 +30,7 @@ inline half3 EnergyConservationBetweenDiffuseAndSpecular (half3 albedo, half3 sp
 	#endif
 }
 ```
+
 上面代码中的1表示100%光能，用1减去镜面反射部分，得到漫反射部分。specColor一般由高光贴图得到，高光贴图用于精确控制物体表面的镜面反射程度。当specColor为白色时（SpecularStrength返回1），结果漫反射比例为0，发生全反射。Unity的PBS还提供一种metallic的workflow，镜面反射程度由反映物体金属性的metallic值控制。
 
 ### 全局光照
@@ -74,6 +76,7 @@ inline UnityGI UnityGI_Base(UnityGIInput data, half occlusion, half3 normalWorld
 	return o_gi;
 }
 ```
+
 上面列出最常见的Baked GI（也称为Lightmap）光照计算，从Lightmap贴图或Light probe中取到的颜色值贡献为indirect lighting的diffuse。
 
 ```
@@ -104,6 +107,7 @@ inline half3 UnityGI_IndirectSpecular(UnityGIInput data, half occlusion, half3 n
 	return specular * occlusion;
 }
 ```
+
 上面代码中的Unity_GlossyEnvironment负责从烘焙好的Reflection probe中读取颜色值，贡献为indirect lighting的specular。
 
 ### BRDF
@@ -183,7 +187,6 @@ half4 BRDF2_Unity_PBS (half3 diffColor, half3 specColor, half oneMinusReflectivi
 	return half4(color, 1);
 }
 ```
-
 
 上面代码最后的（diffColor + specular * specColor）对应BRDF模型公式(2)中的
 $$
