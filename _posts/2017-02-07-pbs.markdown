@@ -83,7 +83,7 @@ inline UnityGI UnityGI_Base(UnityGIInput data, half occlusion, half3 normalWorld
 }
 ```
 
-上面代码中的bakedColor即为从Lightmap贴图取到的颜色值，贡献为indirect lighting的diffuse。其中UNITY_SHOULD_SAMPLE_SH代码段处理从light probe中读取颜色值。一般渲染时静态物体读取lightmap，非静态物体读取light probe。
+上面代码中的bakedColor即为从Lightmap贴图取到的颜色值，贡献为indirect lighting的diffuse。其中UNITY_SHOULD_SAMPLE_SH代码段处理的是从light probe中读取颜色值。一般渲染时静态物体读取lightmap，非静态物体读取light probe。
 
 ##### Image-Based Lighting
 
@@ -205,7 +205,7 @@ half4 BRDF2_Unity_PBS (half3 diffColor, half3 specColor, half oneMinusReflectivi
 $$
 	\intop_{\Omega} f_{r} \text{ d}w
 $$
-后面乘于的nl是对应$$\cos {\theta}$$。
+后面乘于的nl对应$$\cos {\theta}$$。
 
 color返回值加上了全局光照模块返回diffuse和specular，值得注意的是Fresnel部分是与indirect的specular做的乘法。
 
