@@ -12,7 +12,7 @@ tags:
 
 ### 漫反射和镜面反射能量守恒
 
-光线要不进入物体次表面发生生漫反射，要不在表面发生镜面反射。漫反射和镜面反射是一个互斥的关系，而且离开表面的光不可能比原始的入射光要亮，符合能量守恒。
+光线要不进入物体次表面发生生漫反射，要不在表面发生镜面反射，而且离开表面的光不可能比原始的入射光要亮。漫反射和镜面反射是一个互斥能量守恒关系。
 
 UnityStandardUtils.cginc代码：
 
@@ -34,7 +34,11 @@ inline half3 EnergyConservationBetweenDiffuseAndSpecular (half3 albedo, half3 sp
 上面代码中的1表示100%光能，用1减去镜面反射部分，得到漫反射部分。specColor一般由高光贴图得到，高光贴图用于精确控制物体表面的镜面反射程度。当specColor为白色时（SpecularStrength返回1），结果漫反射比例为0，发生全反射。Unity的PBS还提供一种metallic的workflow，镜面反射程度由物体金属性metallic值控制。
 
 ### 全局光照
-相对于主光源的实时光照计算（direct lighting），这里讨论的全局光照（Global Illumination）指的是结合离线生成的光照数据做的光照计算（indirect lighting）。
+Unity 支持Baked GI和Precomputed Realtime GI两种方式。不过这里讨论的全局光照（Global Illumination）指的是结合离线生成的光照数据做的光照计算（indirect lighting）。
+
+##### Baked GI
+
+Baked GI也称为Lightmapping，烘焙的灯光信息通过内置变量unity_Lightmap、unity_SHAr等访问。
 
 UnityGlobalIllumination.cginc代码：
 
@@ -77,7 +81,13 @@ inline UnityGI UnityGI_Base(UnityGIInput data, half occlusion, half3 normalWorld
 }
 ```
 
-上面列出最常见的Baked GI（也称为Lightmap）光照计算，从Lightmap贴图或Light probe中取到的颜色值贡献为indirect lighting的diffuse。
+上面代码中的bakedColor即为从Lightmap贴图取到的颜色值，贡献为indirect lighting的diffuse。其中UNITY_SHOULD_SAMPLE_SH代码段处理从light probe中读取颜色值。一般渲染时静态物体读取lightmap，非静态物体读取light probe。
+
+##### Image-Based Lighting
+
+IBL一般通过环境光贴图（environment map）来实现。Unity用reflection probe来保存环境光贴图，通过内置变量unity_SpecCube0，unity_SpecCube1访问。
+
+UnityGlobalIllumination.cginc代码：
 
 ```
 inline half3 UnityGI_IndirectSpecular(UnityGIInput data, half occlusion, half3 normalWorld, Unity_GlossyEnvironmentData glossIn)
@@ -108,9 +118,10 @@ inline half3 UnityGI_IndirectSpecular(UnityGIInput data, half occlusion, half3 n
 }
 ```
 
-上面代码中的Unity_GlossyEnvironment负责从烘焙好的Reflection probe中读取颜色值，贡献为indirect lighting的specular。
+上面代码中的Unity_GlossyEnvironment从unity_SpecCube0中读取颜色值，贡献为indirect lighting的specular。
 
-### BRDF
+### Physically-Based BRDF
+
 Unity在移动平台上的BRDF（Bidirectional Reflectance Distribution Function）实现是在Minimalist CookTorrance BRDF模型基础上的修改版本。
 
 CookTorrance模型基于微表面理论，单个微表面反射值公式为：
