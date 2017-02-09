@@ -124,7 +124,7 @@ inline half3 UnityGI_IndirectSpecular(UnityGIInput data, half occlusion, half3 n
 
 ### Physically-Based BRDF
 
-Unity在移动平台上的BRDF（Bidirectional Reflectance Distribution Function）实现是在Minimalist CookTorrance BRDF模型基础上的修改版本。
+Physically-Based BRDF（Bidirectional Reflectance Distribution Function）的基础是微表面（Microfacet）理论。Unity在移动平台上的BRDF实现是在Minimalist CookTorrance BRDF模型基础上的修改版本。
 
 CookTorrance模型基于微表面理论，单个微表面反射值公式为：
 
