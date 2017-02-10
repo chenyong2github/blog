@@ -126,16 +126,10 @@ inline half3 UnityGI_IndirectSpecular(UnityGIInput data, half occlusion, half3 n
 
 Physically-Based BRDF（Bidirectional Reflectance Distribution Function）的基础是微表面（Microfacet）理论。Unity在移动平台上的BRDF实现是在Minimalist CookTorrance BRDF模型基础上的修改版本。
 
-CookTorrance模型基于微表面理论，单个微表面反射值公式为：
+CookTorrance模型基于微表面理论，物体表面的最终反射值为所有微表面反射值积分：
 
 $$
-	f_{r} = \frac{k_{d}}{\pi} + k_{s} \frac{(n+1)(\vec{N} \cdot \vec{H})^n}{8 \pi (\vec{L} \cdot \vec{H})^3} \tag{1}
-$$
-
-物体表面的最终反射值为所有微表面反射值积分，公式为：
-
-$$
-	F = \intop_{\Omega} f_{r} \cos {\theta} \text{ d}w \tag{2}
+	F = \intop_{\Omega} f_{r} \cos {\theta} \text{ d}w = \cos {\theta} \intop_{\Omega} f_{r} \text{ d}w = \vec{N} \cdot \vec{L} (\frac{k_{d}}{\pi} + k_{s} \frac{(n+1)(\vec{N} \cdot \vec{H})^n}{8 \pi (\vec{L} \cdot \vec{H})^3})
 $$
 
 UnityStandardBRDF.cginc代码：
@@ -205,7 +199,7 @@ half4 BRDF2_Unity_PBS (half3 diffColor, half3 specColor, half oneMinusReflectivi
 $$
 	\intop_{\Omega} f_{r} \text{ d}w
 $$
-后面乘于的nl对应$$\cos {\theta}$$。
+。
 
 color返回值加上了全局光照模块返回diffuse和specular，值得注意的是Fresnel部分是与indirect的specular做的乘法。
 
