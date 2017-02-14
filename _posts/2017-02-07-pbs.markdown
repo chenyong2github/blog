@@ -203,6 +203,14 @@ $$
 
 color返回值加上了全局光照模块返回diffuse和specular，值得注意的是Fresnel部分是与indirect的specular做的乘法。
 
+### 附
+结果分解图：
+![这里写图片描述](/img/in-post/pbs/1.jpg)
+![这里写图片描述](/img/in-post/pbs/2.jpg)
+![这里写图片描述](/img/in-post/pbs/3.jpg)
+![这里写图片描述](/img/in-post/pbs/4.jpg)
+![这里写图片描述](/img/in-post/pbs/5.jpg)
+
 
 参考文献：
 
