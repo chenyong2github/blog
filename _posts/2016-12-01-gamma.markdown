@@ -43,5 +43,13 @@ Edit -> Project Settings -> Player -> Other Settings -> Color Space
 ### CONCLUSION
 掌握伽马空间和线性空间的不同，这样在实际游戏项目中可以规避一些颜色管理上的常识性错误，从而保证画面质量。总之，线性空间的使用是获得画面沉浸感和真实性上的重要一环。
 
+### 附
+Unity中Gamma和Linear Space切换，Shader返回颜色值截图对比：
+![这里写图片描述](/img/in-post/gamma/1.jpg)
+![这里写图片描述](/img/in-post/gamma/2.jpg)
+其中_Color为编辑器传入的颜色值：
+![这里写图片描述](/img/in-post/gamma/3.jpg)
+可看出Linear Space下对传入的颜色值会做去伽马纠正，Color传入值0.5在Shader中等价于 0.5^2.2 = 0.217 参与计算。
+
 附原文链接：
 http://www.kinematicsoup.com/news/2016/6/15/gamma-and-linear-space-what-they-are-how-they-differ 
