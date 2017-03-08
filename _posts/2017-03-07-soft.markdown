@@ -1,0 +1,22 @@
+---
+layout:     post
+title:      "Unity Soft Particles实现剖析"
+date:       2017-03-07
+author:     "ChenYong"
+header-img: "img/post-bg-soft.jpg"
+tags:
+    - Unity
+    - Shader
+    - Soft Particles
+---
+
+Unity的Quality Setting中有一选项“Soft Particles”用于淡化特效面片与场景物件穿插产生的硬边。前提是需要场景深度图（depth texture）的支持。
+![这里写图片描述](/img/in-post/soft/1.jpg)
+
+
+### How Does It Work?
+
+
+参考文献：
+
+http://developer.download.nvidia.com/SDK/10/direct3d/Source/SoftParticles/doc/SoftParticles_hi.pdf
