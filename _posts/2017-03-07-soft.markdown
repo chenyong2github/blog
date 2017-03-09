@@ -10,7 +10,7 @@ tags:
     - Soft Particles
 ---
 
-Unity的Quality Setting中有一选项“Soft Particles”用于淡化特效面片与场景物件穿插产生的硬边。见下图：
+Unity的Quality Setting中有一选项“Soft Particles”用于淡化特效与场景物件穿插产生的硬边。见下图：
 ![这里写图片描述](/img/in-post/soft/1.jpg)
 
 
