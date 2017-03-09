@@ -10,13 +10,134 @@ tags:
     - Soft Particles
 ---
 
-Unity的Quality Setting中有一选项“Soft Particles”用于淡化特效面片与场景物件穿插产生的硬边。前提是需要场景深度图（depth texture）的支持。
+Unity的Quality Setting中有一选项“Soft Particles”用于淡化特效面片与场景物件穿插产生的硬边。见下图：
 ![这里写图片描述](/img/in-post/soft/1.jpg)
 
 
 ### How Does It Work?
 
+特效由面片(sprite)组成，与场景穿插的是面片。在绘制特效面片的fragment中，根据当前片段与场景的远近来决定片段最终的混合颜色。处理逻辑为：特效与场景越近，特效本身的颜色越浅，反之越深。如下图：
+![这里写图片描述](/img/in-post/soft/2.jpg)
+上图中，d1被深度剔除，d2、d3和d4根据实际需要做淡化混合。
+
+简单的代码化为：
+
+$$
+	C_{result} = C_{particle} * saturate((Z_{scene} – Z_{particle}) * scale)
+$$
+
+### Shader代码
+
+```
+Shader "Effect/add_depthblend_fog" {
+    Properties {
+        _MainTex ("MainTex", 2D) = "white" {}
+        _TintColor ("Color", Color) = (0.5,0.5,0.5,1)
+        _depth ("depth", Float ) = 0
+    }
+    SubShader {
+        Tags {
+            "IgnoreProjector"="True"
+            "Queue"="Transparent"
+            "RenderType"="Transparent"
+        }
+        Pass {
+            Name "FORWARD"
+            Tags {
+                "LightMode"="ForwardBase"
+            }
+            Blend One One
+            ZWrite Off
+            
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #define UNITY_PASS_FORWARDBASE
+            #include "UnityCG.cginc"
+            #pragma multi_compile_fwdbase
+            #pragma multi_compile_fog
+            #pragma exclude_renderers gles3 metal d3d11_9x xbox360 xboxone ps3 ps4 psp2 
+            #pragma target 3.0
+            uniform sampler2D _CameraDepthTexture;
+            uniform sampler2D _MainTex; uniform float4 _MainTex_ST;
+            uniform float4 _TintColor;
+            uniform float _depth;
+            struct VertexInput {
+                float4 vertex : POSITION;
+                float2 texcoord0 : TEXCOORD0;
+                float4 vertexColor : COLOR;
+            };
+            struct VertexOutput {
+                float4 pos : SV_POSITION;
+                float2 uv0 : TEXCOORD0;
+                float4 vertexColor : COLOR;
+                float4 projPos : TEXCOORD1;
+                UNITY_FOG_COORDS(2)
+            };
+            VertexOutput vert (VertexInput v) {
+                VertexOutput o = (VertexOutput)0;
+                o.uv0 = v.texcoord0;
+                o.vertexColor = v.vertexColor;
+                o.pos = mul(UNITY_MATRIX_MVP, v.vertex );
+                UNITY_TRANSFER_FOG(o,o.pos);
+                o.projPos = ComputeScreenPos (o.pos);
+                COMPUTE_EYEDEPTH(o.projPos.z);
+                return o;
+            }
+            float4 frag(VertexOutput i) : COLOR {
+                float sceneZ = max(0,LinearEyeDepth (UNITY_SAMPLE_DEPTH(tex2Dproj(_CameraDepthTexture, UNITY_PROJ_COORD(i.projPos)))) - _ProjectionParams.g);
+                float partZ = max(0,i.projPos.z - _ProjectionParams.g);
+////// Lighting:
+////// Emissive:
+                float4 _MainTex_var = tex2D(_MainTex,TRANSFORM_TEX(i.uv0, _MainTex));
+                float3 emissive = ((_MainTex_var.rgb*i.vertexColor.rgb*_TintColor.rgb*2.0)*((_MainTex_var.a*i.vertexColor.a*_TintColor.a)*saturate((sceneZ-partZ)/_depth)));
+                float3 finalColor = emissive;
+                fixed4 finalRGBA = fixed4(finalColor,1);
+                UNITY_APPLY_FOG_COLOR(i.fogCoord, finalRGBA, fixed4(0,0,0,1));
+                return finalRGBA;
+            }
+            ENDCG
+        }
+    }
+    CustomEditor "ShaderForgeMaterialInspector"
+}
+```
+##### 深度图
+
+淡化处理的前提是需要场景深度图（depth texture）的支持。在Unity中通过设置场景相机depthTextureMode为DepthTextureMode.Depth打开。_CameraDepthTexture为Depth绘制打开后，shader中可访问的深度贴图内置变量。
+
+##### Z值线性化
+
+我们这里讨论OpenGL下的情况，顶点经过透视投影矩阵变换后得到的Z'值取值范围为[-1, 1]，贴图的RGB分量存储范围为[0, 1]，所以Z'值需要再经过[0, 1]线性变换后才能存储。最终Z'值为：
+
+$$
+	Z' = \frac{F}{F-N} + \frac{N*F}{(F-N)*Z} 
+$$
+
+公式中Z'值也即为从_CameraDepthTexture中取到的深度值，其中Z值为实际相机空间下的深度值，F，N分别表示相机远裁剪面和近裁剪面。
+
+这时的Z'值与实际的Z值得关系是非线性的（跟1/Z是线性的），Unity给出了线性化处理，看UnityCG.cginc中给出的代码：
+
+```
+// Z buffer to linear depth
+inline float LinearEyeDepth( float z )
+{
+	return 1.0 / (_ZBufferParams.z * z + _ZBufferParams.w);
+}
+```
+其中_ZBufferParams为Unity的内置变量，_ZBufferParams.z为$\frac{N-F}{N*F}$，_ZBufferParams.w为$\frac{1}{N}$。Z’值经过LinearEyeDepth变换后得到的值-Z，为实际相机空间下的深度正值，表示距离。
+
+### Performance
+
+场景深度图的生成涉及到场景的二次绘制，在低端mobile平台上慎用，这也是Unity的Soft Particles在Quality Setting是可选项的原因。
+
+附项目场景特效深度淡化前后对比：
+![这里写图片描述](/img/in-post/soft/3.jpg)
 
 参考文献：
 
 http://developer.download.nvidia.com/SDK/10/direct3d/Source/SoftParticles/doc/SoftParticles_hi.pdf
+
+http://blog.csdn.net/popy007/article/details/1797121
+
+https://forum.unity3d.com/threads/_zbufferparams-values.39332/
