@@ -161,7 +161,7 @@ OnRenderImage函数中：
 
 不过，这么写Unity运行时每次调用RenderTexture.GetTemporary时都会有个warning：RenderTexture: Resolving a destination texture that is NULL.不知是不是版本bug。
 
-所以，我给出了另外一个实现：在MSAA开启下，创建一个深度相机用来生成无antiAliasing的depth render texture。见实现：
+所以，这里给出了另外一个实现：在MSAA开启下，创建一个深度相机用来生成无antiAliasing的depth render texture。见实现：
 
 ```
 private void SetupDepthCamera()
