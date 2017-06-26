@@ -1,0 +1,414 @@
+---
+layout:     post
+title:      "基于深度的Glow实现"
+date:       2017-06-22
+author:     "ChenYong"
+header-img: "img/post-bg-glow.jpg"
+tags:
+    - Unity
+    - Glow
+    - Shader
+---
+
+Glow（也有称之为Bloom， 见Wiki）在游戏中是一种泛光溢出的效果。glow效果实现的基本思路是把模糊的光晕颜色叠加到原绘制内容上去，使其出现“爆”的效果，即是glow。
+
+### 简易实现
+
+游戏特效中glow的一种简易通用的实现是用Alpha Additive的方式叠加上一层或多层粒子片来达到效果。用于glow的粒子片一般是始终朝向相机的BillBoard，粒子贴图一般是黑底+边缘模糊的规则光晕图形。见下面示例：
+![这里写图片描述](/img/in-post/glow/1.jpg)
+<center>glow粒子片渲染关闭和开启的对比</center>
+![这里写图片描述](/img/in-post/glow/2.jpg)
+<center>glow粒子片的材质和贴图</center>
+
+### Post-Processing实现
+
+上述特效glow实现因为它的光晕图是固定的，无法适用于自由相机下对不规则模型的glow需求。
+
+#### Unity自带的Image Effects
+Unity自带的Image Effects的bloom组件可以达到要求，但当有分相机渲染需求时不能直接用。比如只想对场景中的特效进行glow，把bloom组件挂到特效相机上，整个场景都被glow了。原因是主相机和特效相机绘制的是同一份render target。
+
+所以解决办法是自定义绘制内容和绘制顺序，把glow相机的render target跟主相机分开，对glow相机的render texture进行模糊得到适配模型的光晕，然后再与主相机的绘制内容叠加来达到效果。
+
+#### 自定义实现
+下面以对一个立方体添加glow效果为例，列出大致实现步骤。
+![这里写图片描述](/img/in-post/glow/3.jpg)
+<center>最终立方体glow效果图</center>
+
+##### 设置glow相机
+用于获取模型光晕render texture，设置黑底且只绘制需glow的模型：
+
+```
+...
+GlowCamera.clearFlags = CameraClearFlags.SolidColor;
+GlowCamera.backgroundColor = new Color(0, 0, 0, 0);
+GlowCamera.cullingMask = 1 << LayerMask.NameToLayer("Glow");
+...
+
+```
+
+##### 生成glowTexture
+
+在主相机的OnRenderImage中调用GlowCamera的Render生成glowTexture。
+
+```
+void OnRenderImage(RenderTexture source, RenderTexture destination)
+{
+	glowTexture = RenderTexture.GetTemporary(source.width, source.height, 0, RenderTextureFormat.Default);
+
+	GlowCamera.targetTexture = glowTexture;
+
+	GlowCamera.Render();
+
+	// output glowTexture to screen
+	Graphics.Blit(glowTexture, destination);
+
+	RenderTexture.ReleaseTemporary(glowTexture);
+}
+
+```
+这里为方便调试把glowTexture输出到屏幕。
+
+##### 模糊glowTexture
+模糊的方法一般是用屏幕尺寸的1/2或1/4（downsample）生成render texture，然后在此尺寸的rendertexture的基础上去做多次偏移采样求平均，迭代。
+
+OnRenderImage函数中：
+
+```
+	// downsample
+	var rtW = source.width / 2;
+	var rtH = source.height / 2;
+
+	glowTexture = RenderTexture.GetTemporary(rtW, rtH, 0, RenderTextureFormat.Default);	
+
+	// blur
+	...
+
+```
+
+##### 设置Glow颜色和强度
+
+Glow的颜色和强度信息可以在downsample生成render texture的时候参与计算，见downsample部分shader代码：
+
+```
+fixed4 fragDownsample ( v2f_tap i ) : SV_Target
+{				
+	fixed4 color = tex2D (_MainTex, i.uv20);
+	color += tex2D (_MainTex, i.uv21);
+	color += tex2D (_MainTex, i.uv22);
+	color += tex2D (_MainTex, i.uv23);
+	return max(color/4, 0) * _intensity * _color;
+}
+```
+
+其中_intensity为glow强度，_color为glow颜色，在material中设置。
+
+
+##### 叠加
+
+OnRenderImage函数中：
+
+```
+	...
+	material.SetTexture("_glowTexture", glowTexture);
+	Graphics.Blit(source, destination, material);
+	...
+```
+
+叠加部分shader代码：
+
+```
+fixed4 fragBloom ( v2f_simple i ) : SV_Target
+{	
+	fixed4 color = tex2D(_MainTex, i.uv);
+	return color + tex2D(_glowTexture, i.uv);
+} 
+```
+_MainTex为当前屏幕内容source，与_glowTexture做加法。
+
+下图依次展示了除叠加步骤外（叠加后即为最终效果图，见上图），各步骤得到的结果：
+![这里写图片描述](/img/in-post/glow/4.jpg)
+
+### 基于深度剔除
+在复杂场景下，当把glow相机的render target跟主相机分开，glow相机便没有了主相机的depth buffer（color buffer和depth buffer组成render target），这样会导致glow相机绘制到了被遮挡的内容。见下图：
+![这里写图片描述](/img/in-post/glow/5.jpg)
+<center>左图立方体本未被角色遮挡，右图为正确的显示</center>
+
+#### 实现
+OnRenderImage函数中：
+
+```
+	...
+	GlowCamera.SetTargetBuffers(glowTexture.colorBuffer, source.depthBuffer);
+    GlowCamera.Render();
+	...
+```
+
+Camera.SetTargetBuffers函数设置颜色输出到glowTexture的colorBuffer，深度输出到source.depthBuffer，为主相机的深度buffer。这样glow模型绘制时根据ZTest和ZWrite设置（Opaque默认ZTest LEqual， ZWrite On）更新主相机的深度buffer。
+![这里写图片描述](/img/in-post/glow/6.jpg)
+<center>深度剔除后的绘制流程效果图</center>
+
+#### MSAA开启下的实现
+MSAA（MultiSampling Anti-Aliasing， 多重采样抗锯齿）开启后，会导致主相机的colorBuffer和depthBuffer变大2~8倍（根据具体MSAA设置），这时glowTexture创建的时候antiAliasing设置必须跟MSAA设置一致，否则会到导致深度写入失败（不报错，没效果）。
+
+OnRenderImage函数中：
+
+```
+	...
+	glowTexture = RenderTexture.GetTemporary(rtW, rtH, 0, RenderTextureFormat.Default, RenderTextureReadWrite.Default, 4);
+	...
+```
+这里QualitySetting里设置的是4倍MSAA，与之对应。
+
+不过，这么写Unity运行时每次调用RenderTexture.GetTemporary时都会有个warning：RenderTexture: Resolving a destination texture that is NULL.不知是不是版本bug。
+
+所以，我给出了另外一个实现：在MSAA开启下，创建一个深度相机用来生成无antiAliasing的depth render texture。见实现：
+
+```
+private void SetupDepthCamera()
+{
+    DepthCamera.CopyFrom(GetComponent<Camera>());
+    DepthCamera.allowMSAA = false;
+
+    DepthCamera.targetTexture = depthTexture;
+
+    DepthCamera.enabled = false;
+}
+```
+
+OnRenderImage函数中：
+
+```
+	...
+	depthTexture = RenderTexture.GetTemporary(rtW, rtH, source.depth, RenderTextureFormat.Depth);
+	SetupDepthCamera();
+
+    // render depth texture first
+	DepthCamera.Render();
+	...
+```
+
+
+这么做解决了warning问题，省掉了抗锯齿的开销（对用来作模糊的texture抗锯齿没有意义），但增加了一次绘制开销。
+
+### 最后
+
+附完整C#代码：
+
+```
+using UnityEngine;
+using System.Collections.Generic;
+
+[ExecuteInEditMode]
+[RequireComponent(typeof(Camera))]
+public class CustomGlow : MonoBehaviour
+{
+    public enum Resolution
+    {
+        Low = 0,
+        High = 1,
+    }
+
+    public enum BlurType
+    {
+        Standard = 0,
+        Sgx = 1,
+    }
+
+    [Range(0.0f, 1.5f)]
+    public float threshold = 0.25f;
+    [Range(0.0f, 2.5f)]
+    public float intensity = 0.75f;
+
+    [Range(0.25f, 5.5f)]
+    public float blurSize = 1.0f;
+
+    Resolution resolution = Resolution.Low;
+    [Range(1, 4)]
+    public int blurIterations = 1;
+
+    public BlurType blurType = BlurType.Standard;
+
+    public Shader fastBloomShader = null;
+    private Material fastBloomMaterial = null;
+
+    private Camera glowCamera;
+    private GameObject glowCameraObject;
+    private RenderTexture glowTexture;
+
+    private Camera depthCamera;
+    private GameObject depthCameraObject;
+    private RenderTexture depthTexture;
+
+    private GameObject DepthCameraObject
+    {
+        get
+        {
+            if (!depthCameraObject)
+            {
+                depthCameraObject = new GameObject("depthCameraObject");
+                depthCameraObject.AddComponent<Camera>();
+            }
+            return depthCameraObject;
+        }
+    }
+
+    private Camera DepthCamera
+    {
+        get
+        {
+            if (depthCamera == null)
+            {
+                depthCamera = DepthCameraObject.GetComponent<Camera>();
+            }
+            return depthCamera;
+        }
+    }
+
+    private GameObject GlowCameraObject
+    {
+        get
+        {
+            if (!glowCameraObject)
+            {
+                glowCameraObject = new GameObject("glowCameraObject");
+                //glowCameraObject.hideFlags = HideFlags.HideAndDontSave;
+                glowCameraObject.AddComponent<Camera>();
+                //GlowCamera.hideFlags = HideFlags.HideAndDontSave;
+            }
+            return glowCameraObject;
+        }
+    }
+    private Camera GlowCamera
+    {
+        get
+        {
+            if (glowCamera == null)
+            {
+                glowCamera = GlowCameraObject.GetComponent<Camera>();
+            }
+            return glowCamera;
+        }
+    }
+
+    void OnEnable()
+    {
+        if (!fastBloomShader)
+            fastBloomShader = Shader.Find("Hidden/FastBloom");
+
+        if (!fastBloomMaterial)
+        {
+            fastBloomMaterial = new Material(fastBloomShader);
+            fastBloomMaterial.hideFlags = HideFlags.HideAndDontSave;
+        }
+    }
+
+    void OnDisable()
+    {
+        if (fastBloomMaterial)
+            DestroyImmediate(fastBloomMaterial);
+    }
+
+    private void SetupDepthCamera()
+    {
+        DepthCamera.CopyFrom(GetComponent<Camera>());
+        DepthCamera.allowMSAA = false;
+
+        DepthCamera.targetTexture = depthTexture;
+
+        DepthCamera.enabled = false;
+    }
+
+    private void SetupGlowCamera()
+    {
+        GlowCamera.CopyFrom(GetComponent<Camera>());
+        GlowCamera.clearFlags = CameraClearFlags.Nothing;
+        GlowCamera.rect = new Rect(0, 0, 1, 1);
+        GlowCamera.backgroundColor = new Color(0, 0, 0, 0);
+        GlowCamera.cullingMask = 1 << LayerMask.NameToLayer("Effect");
+        GlowCamera.orthographic = false;
+        GlowCamera.targetTexture = glowTexture;
+
+        GlowCamera.enabled = false;
+    }
+
+    void OnRenderImage(RenderTexture source, RenderTexture destination)
+    {
+        if (!gameObject.activeSelf || !enabled)
+            return;
+
+        int divider = 1;
+        float widthMod = 1.0f;
+
+        fastBloomMaterial.SetVector("_Parameter", new Vector4(blurSize * widthMod, 0.0f, threshold, intensity));
+        source.filterMode = FilterMode.Bilinear;
+
+        var rtW = source.width / divider;
+        var rtH = source.height / divider;
+
+        depthTexture = RenderTexture.GetTemporary(rtW, rtH, source.depth, RenderTextureFormat.Depth);
+        glowTexture = RenderTexture.GetTemporary(rtW, rtH, source.depth, RenderTextureFormat.Default);
+        SetupDepthCamera();
+        SetupGlowCamera();
+
+        // render depth texture first
+        DepthCamera.Render();
+
+        var active = RenderTexture.active;
+        RenderTexture.active = glowTexture;
+        GL.Clear(true, true, Color.clear);
+        RenderTexture.active = active;
+        GlowCamera.SetTargetBuffers(glowTexture.colorBuffer, depthTexture.depthBuffer);
+        GlowCamera.Render();
+
+        RenderTexture.ReleaseTemporary(depthTexture);
+        DestroyImmediate(depthTexture);
+        //Graphics.Blit(glowTexture, destination);
+
+
+        // downsample
+        RenderTexture rt = RenderTexture.GetTemporary(rtW, rtH, 0, source.format, RenderTextureReadWrite.Default, 4);
+        rt.filterMode = FilterMode.Bilinear;
+        Graphics.Blit(glowTexture, rt, fastBloomMaterial, 1);
+
+        var passOffs = blurType == BlurType.Standard ? 0 : 2;
+
+        for (int i = 0; i < blurIterations; i++)
+        {
+            fastBloomMaterial.SetVector("_Parameter", new Vector4(blurSize * widthMod + (i * 1.0f), 0.0f, threshold, intensity));
+
+            // vertical blur
+            RenderTexture rt2 = RenderTexture.GetTemporary(rtW, rtH, 0, source.format, RenderTextureReadWrite.Default, 4);
+            rt2.filterMode = FilterMode.Bilinear;
+            Graphics.Blit(rt, rt2, fastBloomMaterial, 2 + passOffs);
+            RenderTexture.ReleaseTemporary(rt);
+            DestroyImmediate(rt);
+            rt = rt2;
+
+            // horizontal blur
+            rt2 = RenderTexture.GetTemporary(rtW, rtH, 0, source.format, RenderTextureReadWrite.Default, 4);
+            rt2.filterMode = FilterMode.Bilinear;
+            Graphics.Blit(rt, rt2, fastBloomMaterial, 3 + passOffs);
+            RenderTexture.ReleaseTemporary(rt);
+            DestroyImmediate(rt);
+            rt = rt2;
+        }
+
+        fastBloomMaterial.SetTexture("_Bloom", rt);
+
+        Graphics.Blit(source, destination, fastBloomMaterial, 0);
+
+        RenderTexture.ReleaseTemporary(rt);
+        DestroyImmediate(rt);
+
+        RenderTexture.ReleaseTemporary(glowTexture);
+        DestroyImmediate(glowTexture);
+    }
+}
+```
+Shader部分参考Unity自带的Image Effects的Bloom组件。
+
+参考文献：
+
+https://forum.unity3d.com/threads/writing-into-a-render-texture-using-depth-buffer-from-another-render-texture-how-to-do-it.316711/
+
+https://stackoverflow.com/questions/22696123/unity3d-use-main-cameras-depth-buffer-for-rendering-another-camera-view
