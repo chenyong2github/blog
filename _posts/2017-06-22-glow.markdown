@@ -143,7 +143,7 @@ OnRenderImage函数中：
 	...
 ```
 
-Camera.SetTargetBuffers函数设置颜色输出到glowTexture的colorBuffer，深度输出到source.depthBuffer，为主相机的深度buffer。这样glow模型绘制时根据ZTest和ZWrite设置（Opaque默认ZTest LEqual， ZWrite On）更新主相机的深度buffer。
+GlowCamera.SetTargetBuffers函数设置颜色输出到glowTexture的colorBuffer，深度输出到source.depthBuffer，为主相机的深度buffer。这样glow模型绘制时根据ZTest和ZWrite设置（Opaque默认ZTest LEqual， ZWrite On）更新主相机的深度buffer。
 ![这里写图片描述](/img/in-post/glow/6.jpg)
 <center>深度剔除后的绘制流程效果图</center>
 
@@ -161,7 +161,7 @@ OnRenderImage函数中：
 
 不过，这么写Unity运行时每次调用RenderTexture.GetTemporary时都会有个warning：RenderTexture: Resolving a destination texture that is NULL.不知是不是版本bug。
 
-所以，这里给出了另外一个实现：在MSAA开启下，创建一个深度相机用来生成无antiAliasing的depth render texture。见实现：
+所以，这里给出了另外一个实现：在MSAA开启下，创建一个深度相机生成无antiAliasing的深度render texture，作为glow相机的目标深度buffer。
 
 ```
 private void SetupDepthCamera()
@@ -184,11 +184,14 @@ OnRenderImage函数中：
 
     // render depth texture first
 	DepthCamera.Render();
+
+	...
+	GlowCamera.SetTargetBuffers(glowTexture.colorBuffer, depthTexture.depthBuffer);
 	...
 ```
 
 
-这么做解决了warning问题，省掉了抗锯齿的开销（对用来作模糊的texture抗锯齿没有意义），但增加了一次绘制开销。
+这么做解决了warning问题，省掉了抗锯齿的开销（对用来作模糊的texture抗锯齿没有意义），但增加了一次额外生成深度的绘制开销。
 
 ### 最后
 
