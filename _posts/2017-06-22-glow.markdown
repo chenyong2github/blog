@@ -6,8 +6,10 @@ author:     "ChenYong"
 header-img: "img/post-bg-glow.jpg"
 tags:
     - Unity
+    - Graphics
     - Glow
     - Shader
+    - 原创
 ---
 
 Glow（也有称之为Bloom， 见Wiki）在游戏中是一种泛光溢出的效果。glow效果实现的基本思路是把模糊的光晕颜色叠加到原绘制内容上去，使其出现“爆”的效果，即是glow。

@@ -6,8 +6,10 @@ author:     "ChenYong"
 header-img: "img/post-bg-soft.jpg"
 tags:
     - Unity
+    - Graphics
     - Shader
     - Soft Particles
+    - 原创
 ---
 
 Unity的Quality Setting中有一选项“Soft Particles”用于淡化特效与场景物件穿插产生的硬边。见下图：

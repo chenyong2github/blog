@@ -6,7 +6,8 @@ author:     "ChenYong"
 header-img: "img/post-bg-brdf.jpg"
 tags:
     - Unity
-    - 图形学
+    - Graphics
+    - 原创
 ---
 
 ### 1. 介绍 

@@ -6,8 +6,10 @@ author:     "ChenYong"
 header-img: "img/post-bg-pbs.jpg"
 tags:
     - Unity
+    - Graphics
     - Shader
     - PBS
+    - 原创
 ---
 
 Physically-Based Shadering理论是建立在物体表面光照行为满足物理规则的基础上的。

@@ -6,8 +6,9 @@ author:     "ChenYong"
 header-img: "img/post-bg-outline.jpg"
 tags:
     - Unity
-    - 图形学
+    - Graphics
     - Shader
+    - 原创
 ---
 
 ### 简述
@@ -217,4 +218,6 @@ SubShader
 }
 ```
 ![这里写图片描述](http://img.blog.csdn.net/20160808084953139)
+
+### 4．如何显示粗细变化的勾边？
  

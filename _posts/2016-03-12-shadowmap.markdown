@@ -6,7 +6,7 @@ author:     "ChenYong"
 header-img: "img/post-bg-shadowmap.jpg"
 tags:
     - OpenGL
-    - 图形学
+    - Graphics
     - 翻译
 ---
 

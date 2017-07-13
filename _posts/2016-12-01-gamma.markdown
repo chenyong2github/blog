@@ -5,7 +5,7 @@ date:       2016-12-01
 author:     "ChenYong"
 header-img: "img/post-bg-gamma.jpg"
 tags:
-    - 图形学
+    - Graphics
     - 翻译
 ---
 

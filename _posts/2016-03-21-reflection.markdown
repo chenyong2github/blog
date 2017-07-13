@@ -5,8 +5,9 @@ date:       2016-03-21
 author:     "ChenYong"
 header-img: "img/post-bg-reflection.jpg"
 tags:
-    - 图形学
+    - Graphics
     - Unity
+    - 原创
 ---
 
 Angry Bots是Unity安装程序自带的开源示例项目。该示例项目虽然已经发布很久了，但是其很多设计和实现仍然具有参考价值。运行该项目仔细观察，可以发现其雨天地面效果是实时反射的。这里我们先阐明实时反射的原理，然后分析其绘制流程。

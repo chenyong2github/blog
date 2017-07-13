@@ -6,7 +6,7 @@ author:     "ChenYong"
 header-img: "img/post-bg-pbr.jpg"
 tags:
     - PBR
-    - 图形学
+    - Graphics
     - 翻译
 ---
 

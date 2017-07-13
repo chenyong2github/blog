@@ -5,7 +5,7 @@ date:       2016-10-31
 author:     "ChenYong"
 header-img: "img/post-bg-normalmap.jpg"
 tags:
-    - 图形学
+    - Graphics
     - Shader
     - 翻译
 ---
