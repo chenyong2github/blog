@@ -1,0 +1,303 @@
+---
+layout:     post
+title:      "用Unity实现基本Shadow Mapping"
+date:       2017-07-05
+author:     "ChenYong"
+header-img: "img/post-bg-bsm.jpg"
+tags:
+    - Unity
+    - Graphics
+    - Shadow Mapping
+    - 原创
+---
+###	前言
+Unity内置的方向光动态阴影技术是Cascaded Shadow Mapping(简称CSM)。 由于Unity封装的原因，可能并不能满足实际项目动态阴影的需求，但我们可以从Unity开源出来的built-in shaders看出一些实现细节，这些可以作为自定义实现CSM的参考。
+
+
+基本的Shadow mapping是CSM的基础，本篇先实现它。
+
+### 原理
+基本的Shadow mapping由两个绘制过程构成。第一个过程，在光源处设置相机绘制场景，深度测试和写入打开，生成shadow map。第二个过程，正常绘制场景，把当前片段转换到光源空间，计算得到的深度与采样shadow map得到的深度比较大小，判断当前片段是否在阴影中。
+（详细可见我之前翻译过的一篇基于OpenGL实现的Shadow mapping的文章）
+
+### 用Unity实现
+下面以方向光为例，简述用Unity实现的步骤。
+
+#### 在光源处创建深度相机
+在光源位置创建正交投影相机：
+```
+public Camera CreateDirLightCamera()
+{
+    GameObject goLightCamera = new GameObject("Directional Light Camera");
+    Camera LightCamera = goLightCamera.AddComponent<Camera>();
+
+    LightCamera.backgroundColor = Color.white;
+    LightCamera.clearFlags = CameraClearFlags.SolidColor;
+    LightCamera.orthographic = true;
+    LightCamera.orthographicSize = 6f;
+    LightCamera.nearClipPlane = 0.3f;
+    LightCamera.farClipPlane = 20;
+    LightCamera.enabled = false;
+}
+```
+需要注意的是深度相机的背景色默认为白色，白色值为1表示无限远。保证后面主相机正常绘制过程中深度比较的正确。
+
+#### 创建render texture
+从Frame Debugger可看出Unity内部实现的shadow map是个尺寸可变的2的幂次方render texture。我们这里实现跟其保持一致：
+
+```
+private RenderTexture Create2DTextureFor(Camera cam)
+{
+    RenderTextureFormat rtFormat = RenderTextureFormat.Default;
+    if (!SystemInfo.SupportsRenderTextureFormat(rtFormat))
+        rtFormat = RenderTextureFormat.Default;
+
+    rt_2d = new RenderTexture(512* shadowResolution, 512 * shadowResolution, 24, rtFormat);
+    rt_2d.hideFlags = HideFlags.DontSave;
+
+    Shader.SetGlobalTexture("_gShadowMapTexture", rt_2d);
+
+    return rt_2d;
+}
+```
+Unity用sampler2D _ShadowMapTexture全局变量来保存深度图供shader访问，这里用全局变量_gShadowMapTexture来保存深度图，前缀加"_g"以示区别，防止冲突。
+
+创建完的render texture 作为深度相机的绘制目标：
+```
+if (!LightCamera.targetTexture)
+    LightCamera.targetTexture = Create2DTextureFor(LightCamera);
+```
+
+#### 自定义Shadow Caster
+Unity对Pass包含"LightMode" = "ShadowCaster"的物体会把它们的深度绘制到shadow map中。
+参考Unity 4.7.1版本的built-in shader的关于方向光生成阴影的几个宏：
+
+```	
+#if defined(UNITY_MIGHT_NOT_HAVE_DEPTH_TEXTURE)
+#define V2F_SHADOW_CASTER float4 pos : SV_POSITION; float4 hpos : TEXCOORD0
+#define TRANSFER_SHADOW_CASTER(o) o.pos = mul(UNITY_MATRIX_MVP, v.vertex); o.pos.z += unity_LightShadowBias.x; \
+float clamped = max(o.pos.z, o.pos.w*UNITY_NEAR_CLIP_VALUE); o.pos.z = lerp(o.pos.z, clamped, unity_LightShadowBias.y);
+#endif
+#define SHADOW_CASTER_FRAGMENT(i) UNITY_OUTPUT_DEPTH(i.hpos.zw);
+```
+
+自定义_gShadowBias跟unity_LightShadowBias.x类似：
+
+```
+Shader.SetGlobalFloat("_gShadowBias", 0.005f);
+```
+
+自定义shadow caster shader：
+
+```
+Shader "CustomShadow/Caster" 
+{
+	SubShader {
+		Tags { 			
+		    "RenderType" = "Opaque"
+		}
+		Pass {
+			Fog { Mode Off }
+			Cull front
+
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+	 
+			#include "UnityCG.cginc"
+	
+			struct v2f {
+				float4 pos : SV_POSITION;
+				float2 depth:TEXCOORD0;
+			};
+	
+		
+			uniform float _gShadowBias;
+			v2f vert (appdata_full v)
+			{
+				v2f o;
+				o.pos = UnityObjectToClipPos(v.vertex);
+				o.pos.z += _gShadowBias;
+				o.depth = o.pos.zw;
+				return o;
+			}
+		
+			fixed4 frag (v2f i) : COLOR
+			{
+				float depth = i.depth.x/i.depth.y;
+
+			#if defined (SHADER_TARGET_GLSL) 
+				depth = depth*0.5 + 0.5; //(-1, 1)-->(0, 1)
+			#elif defined (UNITY_REVERSED_Z)
+				depth = 1 - depth;       //(1, 0)-->(0, 1)
+			#endif
+
+				return EncodeFloatRGBA(depth);
+			}
+			ENDCG 
+		}	
+	}
+}
+
+```
+这里要注意的是：
+
+1.经过投影变换后，OpenGL平台范围z值变化范围-1到1，非OpenGL平台变化范围为0到1（Unity5.5版本以后，某些平台使用了颠倒的z值），需分类处理保证范围为0到1。
+
+2.EncodeFloatRGBA用32位保存深度，提高了深度精度，采样提取的时候用对应的DecodeFloatRGBA。
+
+3.设置Cull front可解决面向光源的acne问题。
+
+#### 深度相机绘制
+
+我们可以通过设置深度相机绘制shader为上述自定义shader，设置CullingMask只为Layer为"Caster"的物体生成深度图：
+
+```        
+LightCamera.cullingMask = 1 << LayerMask.NameToLayer("Caster");
+```
+```
+LightCamera.RenderWithShader(shadowCaster, "")
+```
+
+正常绘制流程需要把当前片段从世界坐标转换到光源空间坐标。Unity使用全局变量unity_WorldToShadow供shader访问，这里用_gWorldToShadow来保存这个变换：
+```
+Matrix4x4 projectionMatrix = GL.GetGPUProjectionMatrix(dirLightCamera.projectionMatrix, false);
+Shader.SetGlobalMatrix("_gWorldToShadow", projectionMatrix * dirLightCamera.worldToCameraMatrix);
+```
+这里要注意的是用GL.GetGPUProjectionMatrix来处理不同平台投影矩阵的差异性。
+
+#### 自定义Shadow Receiver
+参考Unity built-in shader接收阴影的几个宏：
+```
+#ifdef DIRECTIONAL
+	#define LIGHTING_COORDS(idx1,idx2) SHADOW_COORDS(idx1)
+	#define TRANSFER_VERTEX_TO_FRAGMENT(a) TRANSFER_SHADOW(a)
+	#define LIGHT_ATTENUATION(a)	SHADOW_ATTENUATION(a)
+#endif
+```
+宏定义比较多，这里列个大概，定义一个float4的阴影坐标：
+```
+#define unityShadowCoord4 float4
+```
+```
+#define SHADOW_COORDS(idx1) unityShadowCoord4 _ShadowCoord : TEXCOORD##idx1;
+```
+保存当前片段经_gWorldToShadow变换到光源空间的齐次坐标：
+```
+#define TRANSFER_SHADOW(a) a._ShadowCoord = mul( unity_WorldToShadow[0], mul( unity_ObjectToWorld, v.vertex ) );
+```
+阴影坐标透视除法后的xy用于shadow map的采样，z/w表示当前片段在光源空间的深度，比较确定是否是阴影：
+```
+half shadow = SAMPLE_DEPTH_TEXTURE_PROJ(_ShadowMapTexture, UNITY_PROJ_COORD(shadowCoord)) < (shadowCoord.z / shadowCoord.w) ? _LightShadowData.r : 1.0;
+```
+上面代码_LightShadowData.x存储的是阴影强度。
+
+自定义的Shadow receive shader：
+```
+Shader "CustomShadow/Receiver" {
+
+	SubShader {
+		Tags { "RenderType"="Opaque" }
+
+		LOD 300 
+
+		Pass {
+			Name "FORWARD"
+			Tags{ "LightMode" = "ForwardBase" }
+
+			CGPROGRAM
+			#include "UnityCG.cginc"
+
+			struct v2f
+			{
+				float4 pos : SV_POSITION;
+				float4 shadowCoord : TEXCOORD0;
+			};
+
+			uniform float4x4 _gWorldToShadow;
+
+			uniform sampler2D _gShadowMapTexture;
+			uniform float4 _gShadowMapTexture_TexelSize;
+
+			uniform float _gShadowStrength;
+
+			v2f vert (appdata_full v) 
+			{
+				v2f o;
+				o.pos = UnityObjectToClipPos (v.vertex);
+				float4 worldPos = mul(unity_ObjectToWorld, v.vertex);
+				o.shadowCoord = mul(_gWorldToShadow, worldPos);
+				return o; 
+			}
+
+			fixed4 frag (v2f i) : COLOR0 
+			{			
+				// shadow
+				i.shadowCoord.xy = i.shadowCoord.xy/i.shadowCoord.w;
+				float2 uv = i.shadowCoord.xy;
+				uv = uv*0.5 + 0.5; //(-1, 1)-->(0, 1)
+	
+				float depth = i.shadowCoord.z / i.shadowCoord.w;
+
+			#if defined (SHADER_TARGET_GLSL)
+				depth = depth*0.5 + 0.5; //(-1, 1)-->(0, 1)
+			#elif defined (UNITY_REVERSED_Z)
+				depth = 1 - depth;       //(1, 0)-->(0, 1)
+			#endif
+
+				// sample depth texture
+				float4 col = tex2D(_gShadowMapTexture, uv);
+				float sampleDepth = DecodeFloatRGBA(col);
+				float shadow = sampleDepth < depth ? _gShadowStrength : 1;
+
+				return shadow;
+			}	
+		
+			#pragma vertex vert
+			#pragma fragment frag
+			#pragma fragmentoption ARB_precision_hint_fastest 	
+			ENDCG
+		}
+	}
+}
+```
+这里要注意的是：
+
+1.经过投影变换后，采样坐标xy范围为-1到1，需映射到0到1。z值同样有平台差异问题需处理。
+
+2.自定义_gShadowStrength跟_LightShadowData.x类似：
+```
+Shader.SetGlobalFloat("_gShadowStrength", 0.5f);
+```
+
+#### PCF Soft Shadow
+PCF(Percentage Closer Filtering)通过对附近像素多次采样求平均来实现阴影边缘抗锯齿，达到软阴影的效果。下面是个3x3的PCF:
+```
+float PCFSample(float depth, float2 uv)
+{
+	float shadow = 0.0;
+	for (int x = -1; x <= 1; ++x)
+	{
+		for (int y = -1; y <= 1; ++y)
+		{
+			float4 col = tex2D(_gShadowMapTexture, uv + float2(x, y) * _gShadowMapTexture_TexelSize.xy);
+			float sampleDepth = DecodeFloatRGBA(col);
+			shadow += sampleDepth < depth ? _gShadowStrength : 1;
+		}
+	}
+	return shadow /= 9;
+}
+```
+
+### 结果
+![这里写图片描述](/img/in-post/csm/2.jpg)
+<center>左图硬阴影，右图PCF软阴影</center>
+
+
+参考文献：
+
+http://www.opengl-tutorial.org/intermediate-tutorials/tutorial-16-shadow-mapping/
+
+http://ogldev.atspace.co.uk/www/tutorial42/tutorial42.html
+
+https://learnopengl.com/#!Advanced-Lighting/Shadows/Point-Shadows
