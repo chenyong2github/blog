@@ -1,6 +1,6 @@
 ---
 layout:     post
-title:      "模型勾边outline的实现与改进"
+title:      "模型勾边outline的实现&改进"
 date:       2016-08-08
 author:     "ChenYong"
 header-img: "img/post-bg-outline.jpg"
@@ -220,4 +220,9 @@ SubShader
 ![这里写图片描述](http://img.blog.csdn.net/20160808084953139)
 
 ### 4．如何显示粗细变化的勾边？
+
+通过模型顶点颜色的控制可以实现勾边粗细的效果，这也是比较常用的做法。
+![这里写图片描述](/img/in-post/outline/1.png)
+<center>左图为可视化的顶点颜色，右图为顶点颜色作为勾边粗细的控制参数效果</center>
+
  
