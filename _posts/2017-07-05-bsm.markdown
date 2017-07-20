@@ -1,6 +1,6 @@
 ---
 layout:     post
-title:      "Shadow Mapping剖析与实现"
+title:      "Shadow Mapping剖析&实现"
 date:       2017-07-05
 author:     "ChenYong"
 header-img: "img/post-bg-bsm.jpg"

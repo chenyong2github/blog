@@ -1,6 +1,6 @@
 ---
 layout:     post
-title:      "Unity Soft Particles实现剖析"
+title:      "Unity Soft Particles剖析&实现"
 date:       2017-03-07
 author:     "ChenYong"
 header-img: "img/post-bg-soft.jpg"
