@@ -70,7 +70,7 @@ if (!LightCamera.targetTexture)
 
 #### 自定义Shadow Caster
 Unity对Pass包含"LightMode" = "ShadowCaster"的物体会把它们的深度绘制到shadow map中。
-参考Unity 4.7.1版本的built-in shader的关于方向光生成阴影的几个宏：
+参考Unity 4.7.1版本的built-in shaders的关于方向光生成阴影的几个宏：
 
 ```	
 #if defined(UNITY_MIGHT_NOT_HAVE_DEPTH_TEXTURE)
@@ -166,8 +166,8 @@ Shader.SetGlobalMatrix("_gWorldToShadow", projectionMatrix * dirLightCamera.worl
 ```
 这里要注意的是用GL.GetGPUProjectionMatrix来处理不同平台投影矩阵的差异性。
 
-#### 自定义Shadow Receiver
-参考Unity built-in shader接收阴影的几个宏：
+#### 自定义Shadow Receiver/Collector
+阴影收集在模型正常绘制过程处理（Unity非移动平台在屏幕空间处理）。Unity自带的接收光照的shader封装了对阴影的处理。参考built-in shaders接收阴影的几个宏：
 ```
 #ifdef DIRECTIONAL
 	#define LIGHTING_COORDS(idx1,idx2) SHADOW_COORDS(idx1)
