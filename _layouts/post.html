@@ -111,6 +111,12 @@ layout: default
                 <!-- disqus 评论框 end -->
                 {% endif %}
 
+                {% if site.uyan_username %}
+                <!-- UY BEGIN -->
+                <div id="uyan_frame"></div>
+                <script type="text/javascript" src="http://v2.uyan.cc/code/uyan.js"></script>
+                <!-- UY END -->
+                {% endif %}
             </div>
 
     <!-- Sidebar Container -->
@@ -150,16 +156,6 @@ layout: default
         </div>
     </div>
 </article>
-
-{% if site.uyan_username %}
-<!-- 多说公共JS代码 start (一个网页只需插入一次) -->
-<!-- UY BEGIN -->
-<div id="uyan_frame"></div>
-<script type="text/javascript" src="http://v2.uyan.cc/code/uyan.js"></script>
-<!-- UY END -->
-<!-- 多说公共JS代码 end -->
-{% endif %}
-
 
 {% if site.disqus_username %}
 <!-- disqus 公共JS代码 start (一个网页只需插入一次) -->
