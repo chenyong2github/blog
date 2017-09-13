@@ -296,7 +296,7 @@ c#代码:
     LightCamera.SetTargetBuffers(pointLightRT.colorBuffer, source.depthBuffer);
     LightCamera.Render();
 ```
-创建一个半径为2的实体球，对应点光源影响半径，设置球体的材质为光照计算材质，创建用专门的相机去绘制点光源实体球。
+上述代码创建一个半径为2的实体球，对应点光源影响半径，设置球体的材质为光照计算材质，创建专门的相机去绘制点光源实体球。
 
 点光的光照计算跟方向光的光照计算类似，主要区别在于由vs传入的uv不是光照计算需要的屏幕uv，屏幕uv需根据裁剪空间坐标去转换：
 ```
