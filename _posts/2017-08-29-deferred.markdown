@@ -1,0 +1,359 @@
+---
+layout:     post
+title:      "Deferred Shading初探"
+date:       2017-08-29
+author:     "ChenYong"
+header-img: "img/post-bg-ds.jpg"
+tags:
+    - Unity
+    - Graphics
+    - Deferred Shading
+    - 原创
+---
+
+### 简述
+延迟渲染（Deferred Shading）跟传统的前向渲染（Forward shading）的主要区别在于：延迟渲染把光照计算“延迟”到屏幕空间来做，可以理解为基于像素的光照计算，
+而前向渲染的光照计算是基于片段的(一个像素对应多个片段)，从而减少了光照的重复计算且被浪费的情况。
+
+延迟渲染包括G-buffer和光照计算两个阶段。G-buffer阶段负责生成光照计算需要的颜色、位置、法线等数据，并分别保存到多张render texture里。光照计算阶段使用屏幕UV从这些
+render texture分别取出数据为光照计算使用。
+
+![这里写图片描述](/img/in-post/ds/0.png)
+<center>延迟渲染示意图</center>
+
+### 实现
+下面简述用Unity自定义实现延迟渲染的步骤。
+
+#### G-buffer阶段
+G-buffer需要multiple render targets (MRT)的支持，这样可以在一个pass里生成多张render texture。
+
+Shader代码：
+```
+Shader "Custom/TestMRT" {
+	Properties{
+		_MainTex("", 2D) = "" {}
+	}
+
+	CGINCLUDE
+
+	#include "UnityCG.cginc"
+
+	struct v2f {
+		float4 pos : POSITION;
+		float2 uv : TEXCOORD0;
+		float4 posWorld : TEXCOORD1;
+		float3 normalDir : TEXCOORD2;
+	};
+
+	struct FragOutput {
+		float4 col0 : COLOR0;
+		float4 col1 : COLOR1;
+		float4 col2 : COLOR2;
+	};
+
+	sampler2D _MainTex;
+
+	v2f vert(appdata_full v)
+	{
+		v2f o;
+		o.pos = UnityObjectToClipPos(v.vertex);
+		o.uv = v.texcoord.xy;
+		o.posWorld = mul(unity_ObjectToWorld, v.vertex);
+		o.normalDir = UnityObjectToWorldNormal(v.normal);
+		return o;
+	}
+
+	FragOutput frag(v2f i)
+	{
+		FragOutput o;
+		o.col0 = tex2D(_MainTex, i.uv);
+		o.col1 = i.posWorld;
+		o.col2 = float4(i.normalDir, 1);
+
+		return o;
+	}
+
+	ENDCG
+
+	Subshader 
+	{
+		Pass
+		{
+			CGPROGRAM
+			#pragma glsl
+			#pragma fragmentoption ARB_precision_hint_fastest
+			#pragma vertex vert
+			#pragma fragment frag
+			#pragma target 3.0
+			ENDCG
+		}
+	}
+
+	Fallback off
+}
+```
+MRT shader区别于普通shader的是：它有3个Color值输出分别存储颜色、世界坐标位置、法线。
+
+c#代码：
+```
+    private RenderBuffer[] mrt;
+
+    private RenderTexture albedoTexture;
+    private RenderTexture depthTexture;
+    private RenderTexture posTexture;
+```
+```
+    albedoTexture = RenderTexture.GetTemporary(source.width, source.height, 24, RenderTextureFormat.Default);
+    posTexture = RenderTexture.GetTemporary(source.width, source.height, 24, RenderTextureFormat.ARGBFloat);
+    normalTexture = RenderTexture.GetTemporary(source.width, source.height, 24, RenderTextureFormat.ARGBFloat);
+
+    mrt[0] = albedoTexture.colorBuffer;
+    mrt[1] = posTexture.colorBuffer;
+    mrt[2] = normalTexture.colorBuffer;
+	
+    SetupMRTCamera();
+
+    MRTCamera.SetTargetBuffers(mrt, source.depthBuffer);
+    MRTCamera.RenderWithShader(mrtSdr, "");
+```
+
+上面代码创建MRT相机使用MRT shader绘制场景。用3张屏幕同尺寸的rt分别保存3个颜色输出。可视化这些rt见下图：
+![这里写图片描述](/img/in-post/ds/123.jpg)
+<center>左：颜色，中：位置，右：法线</center>
+
+#### 改进
+上述MRT中用一张格式ARGBFloat(16字节)的rt来保存位置信息。实际应用中一般由深度信息来重建位置信息，深度rt 24位(3字节)足够。这样G-buffer阶段不需要输出位置rt，节省内存空间。
+深度rt可用Unity内置的_CameraDepthTexture，也可自己在MRT里生成。由深度信息重建位置信息实现见光照计算阶段。
+
+
+### 光照计算阶段
+延迟渲染光照计算跟前向渲染光照计算主要区别在于参与光照计算的数据来源不同，前向渲染的光照数据来源于vs的输出，而延迟渲染的光照数据来源于G-buffer。
+
+延迟渲染的光照计算一般也在世界空间进行，需要的数据主要包括颜色、坐标、法线、灯光和视角等。
+方向光和点光的光照计算实现差别较大，这里分别列出。光照模型为Blinn-Phong。
+
+#### 方向光
+方向光没有衰减，可理解为影响的是整个屏幕像素，那么我们可以绘制一个屏幕大小的块，块里的每个像素参与光照计算。
+
+c#代码：
+```
+        //directional lighting
+        RenderTexture dirLightRT = RenderTexture.GetTemporary(source.width, source.height, 24, RenderTextureFormat.Default);
+        dirLightRT.antiAliasing = source.antiAliasing;
+        Graphics.SetRenderTarget(dirLightRT);       
+
+        dirLightMtl.SetPass(0);
+        GL.PushMatrix();
+        GL.LoadOrtho();
+        GL.Begin(GL.QUADS);
+        GL.Color(Color.red);
+        GL.TexCoord(new Vector3(0, 0, 0));
+        GL.Vertex3(0, 0, 0);
+        GL.TexCoord(new Vector3(0, 1, 0));
+        GL.Vertex3(0, 1, 0);
+        GL.TexCoord(new Vector3(1, 1, 0));
+        GL.Vertex3(1, 1, 0);
+        GL.TexCoord(new Vector3(1, 0, 0));
+        GL.Vertex3(1, 0, 0);        
+        GL.End();
+        GL.PopMatrix();
+        //end directional lighting
+```
+这里用GL.QUADS绘制了屏幕大小的块，屏幕uv从左到右，由下到上。
+
+Shader代码：
+```
+Shader "Custom/TestDeferredLighting" 
+{
+	CGINCLUDE
+	#include "UnityCG.cginc"
+
+	struct v2f {
+		float4 pos : POSITION;
+		float2 uv : TEXCOORD0;
+	};
+
+	uniform sampler2D _albedoTexture;
+	uniform sampler2D _normalTexture;
+	uniform sampler2D _depthTexture;
+
+	uniform float4 _LightColor0;
+
+	uniform float4x4 _inverseVP;
+
+	v2f vert(appdata_full v)
+	{
+		v2f o;
+		o.pos = UnityObjectToClipPos(v.vertex);
+		o.uv = v.texcoord.xy;
+		return o;
+	}
+
+	fixed4 frag(v2f i) : COLOR
+	{
+		fixed4 albedo = tex2D(_albedoTexture, i.uv);
+		float4 normal = tex2D(_normalTexture, i.uv);
+		fixed depth = DecodeFloatRGBA(tex2D(_depthTexture, i.uv));
+#if defined (SHADER_TARGET_GLSL) 
+		depth = depth * 2 - 1;	 // (0, 1)-->(-1, 1)
+#elif defined (UNITY_REVERSED_Z)
+		depth = 1 - depth;       // (0, 1)-->(1, 0)
+#endif
+		
+		// reconstruct world position by depth;
+		float4 clipPos;
+		clipPos.xy = i.uv*2-1;
+		clipPos.z = depth;
+		clipPos.w = 1;
+
+		float4 posWorld = mul(_inverseVP, clipPos);
+		posWorld /= posWorld.w;
+
+		//directional light
+		half3 lightDir = normalize(_WorldSpaceLightPos0.xyz);
+		half3 viewDir = normalize(_WorldSpaceCameraPos.xyz - posWorld);
+
+		half3 halfDir = normalize(lightDir + viewDir);
+		half NdotL = max(0, dot(normal, lightDir));
+		half NdotH = max(0, dot(normal, halfDir));
+		float3 diffuse = NdotL * albedo.rgb * _LightColor0;
+		float3 specular = pow(NdotH, 10) * _LightColor0;
+
+		fixed3 color = diffuse + specular;
+		return fixed4(color, 1);
+	}
+
+	ENDCG
+
+	Subshader 
+	{
+		Pass
+		{
+			CGPROGRAM
+			#pragma glsl
+			#pragma fragmentoption ARB_precision_hint_fastest
+			#pragma vertex vert
+			#pragma fragment frag
+			#pragma target 3.0
+			ENDCG
+		}
+	}
+
+	Fallback off
+}
+```
+
+通过tex2D(_???Texture, i.uv)分别取到颜色、法线和深度值。由深度重建世界坐标的变换矩阵_inverseVP在C#生成传入：
+```
+        Matrix4x4 projectionMatrix = GL.GetGPUProjectionMatrix(Camera.main.projectionMatrix, false);
+        Shader.SetGlobalMatrix("_inverseVP", Matrix4x4.Inverse(projectionMatrix * Camera.main.worldToCameraMatrix));
+```
+需要注意的是裁剪空间的坐标取值范围为[-1, 1]，z坐标在DX平台取值范围为[0, 1]。
+![这里写图片描述](/img/in-post/ds/4.jpg)
+<center>方向光光照计算示意图</center>
+
+#### 点光
+点光有衰减，衰减模型为点光源为中心，向外按距离中心平方级（不是线性）衰减。点光作用的范围不再是全屏幕，
+如何减少不必要的光照计算？最直接的方法是在全屏幕光照计算的时候加距离判断。
+
+Shader伪代码：
+```
+        float distance = length(lights[i].Position - FragPos);
+        if(distance < lights[i].Radius)
+        {
+            // do expensive lighting
+            [...]
+        }
+```
+但实际应用中不会这么做，因为：
+
+>The reality is that your GPU and GLSL are really bad at optimizing loops and 
+branches. The reason for this is that shader execution on the GPU is highly parallel and most architectures have a 
+requirement that for large collection of threads they need to run the exact same shader code for it to be efficient. 
+This often means that a shader is run that always executes all branches of an if statement to ensure the shader runs 
+are the same, making our previous radius check optimization completely useless; we'd still calculate lighting for all 
+light sources!
+
+实际中使用的方法是在点光源的位置去绘制一个实体球mesh，大小跟点光源的影响范围一致，实体球渲染的颜色为光照计算的结果。这样便可不加距离判断分支跳过所有不受点光影响的像素。
+
+c#代码:
+```
+    void CreatePointLightGameobject()
+    {
+        GameObject go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        go.layer = LayerMask.NameToLayer("PointLight");
+        go.transform.position = pointLight.transform.position;
+        go.transform.rotation = pointLight.transform.rotation;
+        go.transform.localScale = new Vector3(4, 4, 4);
+        go.GetComponent<MeshRenderer>().material = pointLightMtl;
+    }
+```
+```
+    Shader.SetGlobalVector("_pointLightPos", pointLight.transform.position);
+    RenderTexture pointLightRT = RenderTexture.GetTemporary(source.width, source.height, 24, RenderTextureFormat.Default);
+    pointLightRT.antiAliasing = source.antiAliasing;
+    SetupLightCamera();
+    LightCamera.SetTargetBuffers(pointLightRT.colorBuffer, source.depthBuffer);
+    LightCamera.Render();
+```
+创建一个半径为2的实体球，对应点光源影响半径，设置球体的材质为光照计算材质，创建用专门的相机去绘制点光源实体球。
+
+点光的光照计算跟方向光的光照计算类似，主要区别在于由vs传入的uv不是光照计算需要的屏幕uv，屏幕uv需根据裁剪空间坐标去转换：
+```
+	v2f vert(appdata_full v)
+	{
+		v2f o;
+		o.pos = UnityObjectToClipPos(v.vertex);
+		o.uv = v.texcoord.xy;
+		o.screenPos = float4(o.pos.xy / o.pos.w, 0, 0);
+		o.screenPos.y *= _ProjectionParams.x;
+		return o;
+	}
+
+	fixed4 frag(v2f i) : COLOR
+	{
+#if UNITY_UV_STARTS_AT_TOP
+		float grabSign = -_ProjectionParams.x;
+#else
+		float grabSign = _ProjectionParams.x;
+#endif
+		
+		float2 sceneUVs = float2(1,grabSign)*i.screenPos.xy*0.5 + 0.5;
+```
+还有区别就是点光需要计算衰减：
+
+```
+		//point light
+		half3 lightDir = normalize(_pointLightPos.xyz - posWorld);
+		half3 viewDir = normalize(_WorldSpaceCameraPos.xyz - posWorld);
+
+		half d = distance(_pointLightPos.xyz, posWorld);
+		float3 atten = 5 *pow(max(0, 2 - d), 2) * float3(1, 0, 0); //color red, range 2, intensity 5
+
+		half3 halfDir = normalize(lightDir + viewDir);
+		half NdotL = max(0, dot(normal, lightDir));
+		half NdotH = max(0, dot(normal, halfDir));
+		float3 diffuse = NdotL * albedo.rgb * atten;
+		float3 specular = pow(NdotH, 10) * atten;
+
+		fixed3 color = diffuse + specular;
+		return fixed4(color, 1);
+```
+
+![这里写图片描述](/img/in-post/ds/5.jpg)
+<center>点光源光照计算示意图</center>
+
+场景所有光源的光照计算结果叠加到一起得到最终的场景光照效果。
+![这里写图片描述](/img/in-post/ds/6.jpg)
+<center>最终光照效果</center>
+
+
+### 结论
+
+延迟渲染的光照计算量由前向渲染的nr_objects * nr_light减少到nr_objects + nr_lights，
+延迟渲染处理多光源的能力优势明显，当然延迟渲染也有一些劣势，比如多材质问题、半透问题和MSAA问题等。
+
+
+参考文献：
+
+https://learnopengl.com/#!Advanced-Lighting/Deferred-Shading
