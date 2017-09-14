@@ -274,7 +274,7 @@ This often means that a shader is run that always executes all branches of an if
 are the same, making our previous radius check optimization completely useless; we'd still calculate lighting for all 
 light sources!
 
-实际中使用的方法是在点光源的位置去绘制一个实体球mesh，大小跟点光源的影响范围一致，实体球渲染的颜色为光照计算的结果。这样便可不加距离判断分支跳过所有不受点光影响的像素。
+实际中使用的方法是在点光源的位置去绘制一个空心球mesh，大小跟点光源的影响范围一致，空心球渲染的颜色为光照计算的结果。
 
 c#代码:
 ```
@@ -296,7 +296,7 @@ c#代码:
     LightCamera.SetTargetBuffers(pointLightRT.colorBuffer, source.depthBuffer);
     LightCamera.Render();
 ```
-上述代码创建一个半径为2的实体球，对应点光源影响半径，设置球体的材质为光照计算材质，创建专门的相机去绘制点光源实体球。
+上述代码创建一个半径为2的空心球，对应点光源影响半径，设置球体的材质为光照计算材质，创建专门的相机去绘制点光源空心球。
 
 点光的光照计算跟方向光的光照计算类似，主要区别在于由vs传入的uv不是光照计算需要的屏幕uv，屏幕uv需根据裁剪空间坐标去转换：
 ```
@@ -343,12 +343,60 @@ c#代码:
 ![这里写图片描述](/img/in-post/ds/5.jpg)
 <center>点光源光照计算示意图</center>
 
+#### 改进
+绘制球体的方式绘制点光源也存在问题：
+1.相机在点光球体内时，没有光照，原因是球体的绘制方式是背面剔除（正面已经在相机后了）；
+2.屏幕上球体覆盖的像素都会参与光照计算，没有剔除z方向超出球体的像素，只是光照效果衰减为0。
+
+解决办法是用Stencil， 球体的shader需加上：
+```
+Subshader 
+	{
+		Cull off
+		Blend One One
+		
+		Pass{
+
+			Stencil{
+				Ref 100
+				Comp always				
+				FailBack  Keep
+				ZFailBack IncrWrap
+				PassBack Keep
+				FailFront Keep
+				ZFailFront DecrWrap
+				PassFront Keep
+			}
+
+			Color(0,0,0,0)
+		}
+		
+
+		Pass
+		{
+
+			Stencil
+			{
+				Ref 100
+				Comp NotEqual
+			}
+
+			CGPROGRAM
+			#pragma glsl
+			#pragma fragmentoption ARB_precision_hint_fastest
+			#pragma vertex vert
+			#pragma fragment frag
+			#pragma target 3.0
+			ENDCG
+		}
+	}
+```
+
+### 结果
+
 场景所有光源的光照计算结果叠加到一起得到最终的场景光照效果。
 ![这里写图片描述](/img/in-post/ds/6.jpg)
 <center>最终光照效果</center>
-
-
-### 结论
 
 延迟渲染的光照计算量由前向渲染的nr_objects * nr_light减少到nr_objects + nr_lights，
 延迟渲染处理多光源的能力优势明显，当然延迟渲染也有一些劣势，比如多材质问题、半透问题和MSAA问题等。
@@ -357,3 +405,4 @@ c#代码:
 参考文献：
 
 https://learnopengl.com/#!Advanced-Lighting/Deferred-Shading
+http://ogldev.atspace.co.uk/www/tutorial37/tutorial37.html
