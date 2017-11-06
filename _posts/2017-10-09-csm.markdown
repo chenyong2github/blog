@@ -184,6 +184,14 @@ RenderTexture[] depthTextures = new RenderTexture[4];
 
 ...
 
+for (int i = 0; i < 4; i++)
+{
+    depthTextures[i] = new RenderTexture(1024, 1024, 24, rtFormat);
+    Shader.SetGlobalTexture("_gShadowMapTexture" + i, depthTextures[i]);
+}
+
+...
+
 world2ShadowMats.Clear();
 for (int i = 0; i < 4; i++)
 {
