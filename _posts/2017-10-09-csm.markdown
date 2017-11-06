@@ -1,0 +1,307 @@
+---
+layout:     post
+title:      "Cascaded Shadow Mapping剖析&实现(续)"
+date:       2017-10-09
+author:     "ChenYong"
+header-img: "img/post-bg-shadow.jpg"
+tags:
+    - Unity
+    - Graphics
+    - Cascaded Shadow Mapping
+    - 原创
+---
+
+### 前言
+Unity内置的方向光动态阴影技术是Cascaded Shadow Mapping(简称CSM)。 由于Unity封装的原因，可能并不能满足实际项目动态阴影的需求，但我们可以从Unity开源出来的built-in shaders看出一些实现细节，这些可以作为自定义实现CSM的参考。
+
+### 简述
+
+基本的Shadow mapping在大场景下存在阴影图精度问题：<br />
+1.主相机整个视锥生成一张阴影图，会导致单个物体占用阴影图的比例太小，读取阴影图时出现采样精度不够（多个像素采样一个图素），产生锯齿。<br />
+2.相机近端和远端物体对阴影图采样精度一样，会导致近端物体采样精度不够，远端物体采样精度浪费。<br />
+使用尺寸更大的阴影图可以解决这个问题，但会导致内存使用增加。
+
+大场景方向光动态阴影的解决方案一般是采用CSM技术。CSM通过把相机的视锥体按远近划分为几个级别，处于各个级别下的物体深度信息绘制到各级阴影图中，显示时采样各自对应的阴影图。见下图示意：
+![这里写图片描述](/img/in-post/csm/1.jpg)
+<center>2级shadow map采样示意图</center>
+
+### 实现
+下面简述用Unity实现的大致步骤。
+
+#### 灯光相机视锥
+正交的灯光相机视锥为长方体，为了减少灯光相机的无效绘制，需调整大小为主相机视锥的包围盒，见上面3级视锥分级示意图。<br />
+
+下面先介绍对主相机的整个视锥如何求包围盒：
+
+##### 获取主相机视锥顶点
+```
+void InitFrustumCorners()
+{
+	mainCamera_fcs = new FrustumCorners();
+	mainCamera_fcs.nearCorners = new Vector3[4];
+	mainCamera_fcs.farCorners = new Vector3[4];
+
+	lightCamera_fcs = new FrustumCorners();
+	lightCamera_fcs.nearCorners = new Vector3[4];
+	lightCamera_fcs.farCorners = new Vector3[4];
+
+}
+
+void CalcMainCameraFrustumCorners()
+{
+    Camera.main.CalculateFrustumCorners(new Rect(0, 0, 1, 1), Camera.main.nearClipPlane, Camera.MonoOrStereoscopicEye.Mono, mainCamera_fcs.nearCorners);
+    for (int i = 0; i < 4; i++)
+    {
+        mainCamera_fcs.nearCorners[i] = Camera.main.transform.TransformPoint(mainCamera_fcs.nearCorners[i]);
+    }
+
+    Camera.main.CalculateFrustumCorners(new Rect(0, 0, 1, 1), Camera.main.farClipPlane,  Camera.MonoOrStereoscopicEye.Mono, mainCamera_fcs.farCorners);
+    for (int i = 0; i < 4; i++)
+    {
+        mainCamera_fcs.farCorners[i] = Camera.main.transform.TransformPoint(mainCamera_fcs.farCorners[i]);
+    }
+}
+```
+这里用到了Unity的API：CalculateFrustumCorners，可方便获取相机Local的视锥顶点坐标，使用时需转换到World空间下。
+
+##### 计算灯光相机包围盒
+
+因为计算得到的包围盒会被作为灯光相机的视锥，所以一般包围盒的计算转换到灯光相机空间进行。
+```
+void CalcLightCameraFrustum()
+{
+    if (dirLightCamera == null)
+        return;
+
+    for (int i = 0; i < 4; i++)
+    {
+        lightCamera_fcs.nearCorners[i] = dirLightCamera.transform.InverseTransformPoint(mainCamera_fcs.nearCorners[i]);
+        lightCamera_fcs.farCorners[i] = dirLightCamera.transform.InverseTransformPoint(mainCamera_fcs.farCorners[i]);
+    }
+
+    float[] xs = { lightCamera_fcs.nearCorners[0].x, lightCamera_fcs.nearCorners[1].x, lightCamera_fcs.nearCorners[2].x, lightCamera_fcs.nearCorners[3].x,
+                    lightCamera_fcs.farCorners[0].x, lightCamera_fcs.farCorners[1].x, lightCamera_fcs.farCorners[2].x, lightCamera_fcs.farCorners[3].x };
+
+    float[] ys = { lightCamera_fcs.nearCorners[0].y, lightCamera_fcs.nearCorners[1].y, lightCamera_fcs.nearCorners[2].y, lightCamera_fcs.nearCorners[3].y,
+                    lightCamera_fcs.farCorners[0].y, lightCamera_fcs.farCorners[1].y, lightCamera_fcs.farCorners[2].y, lightCamera_fcs.farCorners[3].y };
+
+    float[] zs = { lightCamera_fcs.nearCorners[0].z, lightCamera_fcs.nearCorners[1].z, lightCamera_fcs.nearCorners[2].z, lightCamera_fcs.nearCorners[3].z,
+                    lightCamera_fcs.farCorners[0].z, lightCamera_fcs.farCorners[1].z, lightCamera_fcs.farCorners[2].z, lightCamera_fcs.farCorners[3].z };
+
+    float minX = Mathf.Min(xs);
+    float maxX = Mathf.Max(xs);
+
+    float minY = Mathf.Min(ys);
+    float maxY = Mathf.Max(ys);
+
+    float minZ = Mathf.Min(zs);
+    float maxZ = Mathf.Max(zs);
+
+    lightCamera_fcs.nearCorners[0] = new Vector3(minX, minY, minZ);
+    lightCamera_fcs.nearCorners[1] = new Vector3(maxX, minY, minZ);
+    lightCamera_fcs.nearCorners[2] = new Vector3(maxX, maxY, minZ);
+    lightCamera_fcs.nearCorners[3] = new Vector3(minX, maxY, minZ);
+
+    lightCamera_fcs.farCorners[0] = new Vector3(minX, minY, maxZ);
+    lightCamera_fcs.farCorners[1] = new Vector3(maxX, minY, maxZ);
+    lightCamera_fcs.farCorners[2] = new Vector3(maxX, maxY, maxZ);
+    lightCamera_fcs.farCorners[3] = new Vector3(minX, maxY, maxZ);
+	...
+}
+```
+得到的包围盒用线框绘制出来见下图：
+![这里写图片描述](/img/in-post/csm/5.jpg)
+上图的灰色线框表示主相机视锥，绿色线框表示包围盒，红色线框表示近平面。
+
+##### 构造灯光相机
+```
+        Vector3 pos = lightCamera_fcs.nearCorners[0] + (lightCamera_fcs.nearCorners[2] - lightCamera_fcs.nearCorners[0]) * 0.5f;
+        dirLightCamera.transform.position = dirLightCamera.transform.TransformPoint(pos);
+        dirLightCamera.transform.rotation = dirLight.transform.rotation;
+
+        dirLightCamera.nearClipPlane = minZ;
+        dirLightCamera.farClipPlane = maxZ;
+
+        dirLightCamera.aspect = Vector3.Magnitude(lightCamera_fcs.nearCorners[0] - lightCamera_fcs.nearCorners[1]) / Vector3.Magnitude(lightCamera_fcs.nearCorners[1] - lightCamera_fcs.nearCorners[2]);
+        dirLightCamera.orthographicSize = Vector3.Magnitude(lightCamera_fcs.nearCorners[1] - lightCamera_fcs.nearCorners[2]) * 0.5f;
+```
+上述代码设置灯光相机的视锥参数(也是灯光相机的投影矩阵)nearClipPlane，farClipPlane，aspect和orthographicSize。<br />
+灯光相机的位置和朝向也需要设置，其中位置为近平面的中点，计算方法见下图：
+![这里写图片描述](/img/in-post/csm/6.jpg)
+
+$$
+	\vec{OP} = \vec{OA} + \vec{AP} = \vec{OA} + \frac{\vec{AC}}{2}
+$$
+
+#### 主相机视锥分割
+Unity的QualitySettings里提供了对相机视锥的分割设置，见下图：
+![这里写图片描述](/img/in-post/csm/4.jpg)
+<center>Unity4级视锥分割参数</center>
+
+UnityShaderVariables.cginc用以下变量保存分割参数：
+```
+	float4 _LightSplitsNear;
+	float4 _LightSplitsFar;
+```
+这里类似实现：
+```
+    float[] _LightSplitsNear;
+    float[] _LightSplitsFar;
+
+    ...
+	
+    float[] nears = { near, far * 0.067f + near, far * 0.133f + far * 0.067f + near, far * 0.267f + far * 0.133f + far * 0.067f + near };
+    float[] fars = { far * 0.067f + near, far * 0.133f + far * 0.067f + near, far * 0.267f + far * 0.133f + far * 0.067f + near, far };
+
+    _LightSplitsNear = nears;
+    _LightSplitsFar = fars;
+
+    ...
+
+    for (int i = 0; i < 4; i++)
+    {
+        //计算主相机分割视锥
+        ...
+        //计算分割视锥的灯光相机包围盒
+        ...
+    }
+```
+得到的分割包围盒见下图：
+![这里写图片描述](/img/in-post/csm/7.jpg)
+<center>Unity4级视锥分割俯视图</center>
+
+#### 级联阴影图生成
+生成的级联灯光相机依次绘制便得到各自对应阴影图:
+```
+List<Matrix4x4> world2ShadowMats = new List<Matrix4x4>(4);
+RenderTexture[] depthTextures = new RenderTexture[4];
+
+...
+
+world2ShadowMats.Clear();
+for (int i = 0; i < 4; i++)
+{
+    ConstructLightCameraSplits(i);
+
+    dirLightCamera.targetTexture = depthTextures[i];
+    dirLightCamera.RenderWithShader(shadowCaster, "");
+
+    projectionMatrix = GL.GetGPUProjectionMatrix(dirLightCamera.projectionMatrix, false);
+    world2ShadowMats.Add(projectionMatrix * dirLightCamera.worldToCameraMatrix);
+}            
+
+Shader.SetGlobalMatrixArray("_gWorld2Shadow", world2ShadowMats);
+```
+
+Unity底层实现是用一张2x2阴影图集来保存4级阴影图。由于我使用的Unity版本原因，这里使用4张单独的rt来分别保存。Unity2017新版本里已经加入对RenderTexture分区域更新的特性，这样也可以在上层实现类似底层的级联阴影图集。
+
+![这里写图片描述](/img/in-post/csm/8.jpg)
+<center>4级级联阴影图</center>
+
+#### 级联阴影图采样
+
+UnityShaderVariables.cginc用以下变量保存分割后的世界坐标到光源空间投影坐标的矩阵变换：
+```
+float4x4 unity_WorldToShadow[4];
+```
+
+配合视锥分割参数和片段深度可获取对应级联索引，Internal-ScreenSpaceShadows.cginc：
+```
+inline fixed4 getCascadeWeights(float3 wpos, float z)
+{
+	fixed4 zNear = float4( z >= _LightSplitsNear );
+	fixed4 zFar = float4( z < _LightSplitsFar );
+	fixed4 weights = zNear * zFar;
+	return weights;
+}
+```
+上面函数传进来的片段世界坐标wpos并没有用：（，返回值4个分量均为布尔值，比如z值0.4得到的返回值为fixed4（0,0,1,0)，表示对应3级的矩阵变换和阴影图。
+
+这里类似实现：
+```
+uniform float4x4 _gWorld2Shadow[4];
+
+...
+
+float4 SampleShadowTexture(float4 wPos, fixed4 cascadeWeights)
+{
+	float4 shadowCoord0 = mul(_gWorld2Shadow[0], wPos);
+	float4 shadowCoord1 = mul(_gWorld2Shadow[1], wPos);
+	float4 shadowCoord2 = mul(_gWorld2Shadow[2], wPos);
+	float4 shadowCoord3 = mul(_gWorld2Shadow[3], wPos);
+
+	shadowCoord0.xy /= shadowCoord0.w;
+	shadowCoord1.xy /= shadowCoord1.w;
+	shadowCoord2.xy /= shadowCoord2.w;
+	shadowCoord3.xy /= shadowCoord3.w;
+
+	shadowCoord0.xy = shadowCoord0.xy*0.5 + 0.5;
+	shadowCoord1.xy = shadowCoord1.xy*0.5 + 0.5;
+	shadowCoord2.xy = shadowCoord2.xy*0.5 + 0.5;
+	shadowCoord3.xy = shadowCoord3.xy*0.5 + 0.5;
+
+	float4 sampleDepth0 = tex2D(_gShadowMapTexture0, shadowCoord0.xy);
+	float4 sampleDepth1 = tex2D(_gShadowMapTexture1, shadowCoord1.xy);
+	float4 sampleDepth2 = tex2D(_gShadowMapTexture2, shadowCoord2.xy);
+	float4 sampleDepth3 = tex2D(_gShadowMapTexture3, shadowCoord3.xy);
+
+	float depth0 = shadowCoord0.z / shadowCoord0.w;
+	float depth1 = shadowCoord1.z / shadowCoord1.w;
+	float depth2 = shadowCoord2.z / shadowCoord2.w;
+	float depth3 = shadowCoord3.z / shadowCoord3.w;
+
+	#if defined (SHADER_TARGET_GLSL)
+		depth0 = depth0*0.5 + 0.5; //(-1, 1)-->(0, 1)
+		depth1 = depth1*0.5 + 0.5;
+		depth2 = depth2*0.5 + 0.5;
+		depth3 = depth3*0.5 + 0.5;
+	#elif defined (UNITY_REVERSED_Z)
+		depth0 = 1 - depth0;       //(1, 0)-->(0, 1)
+		depth1 = 1 - depth1;
+		depth2 = 1 - depth2;
+		depth3 = 1 - depth3;
+	#endif
+
+	float shadow0 = sampleDepth0 < depth0 ? _gShadowStrength : 1;
+	float shadow1 = sampleDepth1 < depth1 ? _gShadowStrength : 1;
+	float shadow2 = sampleDepth2 < depth2 ? _gShadowStrength : 1;
+	float shadow3 = sampleDepth3 < depth3 ? _gShadowStrength : 1;
+
+	//return col0;
+	float shadow = shadow0*cascadeWeights[0] + shadow1*cascadeWeights[1] + shadow2*cascadeWeights[2] + shadow3*cascadeWeights[3];
+	return shadow;
+}
+```
+### Shadow Cascadeds查看模式
+Unity的Scene模式下有一个Shadow Cascadeds查看模式，可以方便查看整个场景的级联阴影图分布。
+这种效果简单实现可以把级联级别作为颜色参数叠加到阴影颜色上即可：
+```
+return shadow*cascadeWeights;
+```
+![这里写图片描述](/img/in-post/csm/44.jpg)
+<center>Unity自带和自实现的Shadow Cascadeds查看模式对比</center>
+
+### 结论
+>Perspective aliasing in a shadow map is one of the most difficult problems to overcome. 
+In the technical article, Common Techniques to Improve Shadow Depth Maps, perspective 
+aliasing is described and some approaches to mitigate the problem are identified. 
+In practice, CSMs tend to be the best solution, and are commonly employed in modern games.
+The basic concept of CSMs is easy to understand. Different areas of the camera frustum 
+require shadow maps with different resolutions. Objects nearest the eye require a higher 
+resolution than do more distant objects. In fact, when the eye moves very close to the geometry, 
+the pixels nearest the eye can require so much resolution that even a 4096 × 4096 shadow map is insufficient.
+
+CSM能有效解决透视相机下的阴影锯齿问题，基本的SM通过增大阴影图大小可改善阴影质量，但不能根本解决问题。
+
+下面展示了同场景下SM和CSM的阴影质量对比，明显可看出CSM使用相同大小的阴影图(2048x2048 = 4x1024x1024)，但获得了好得多的阴影质量。
+
+![这里写图片描述](/img/in-post/csm/55.jpg)
+<center>单张2048的阴影贴图和4张1024级联阴影贴图阴影效果对比</center>
+
+当然，CSM存在重复绘制和多次采样的问题，这也是Unity的CSM方案对mobile平台缺省为1个cascade的原因。
+
+参考文献：
+
+https://msdn.microsoft.com/en-us/library/windows/desktop/ee416307(v=vs.85).aspx
+
+http://ogldev.atspace.co.uk/www/tutorial49/tutorial49.html
