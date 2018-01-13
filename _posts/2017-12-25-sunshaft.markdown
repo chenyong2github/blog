@@ -1,0 +1,155 @@
+---
+layout:     post
+title:      "体积光方案剖析与应用(1)"
+date:       2017-12-25
+author:     "ChenYong"
+header-img: "img/post-bg-sunshafts.jpg"
+tags:
+    - Unity
+    - Graphics
+    - Volumetric Light
+    - 原创
+---
+
+### 简述
+体积光（Volumetric Light）是光线越过遮挡物产生的一种大气散射现象（丁达尔现象）。生活中较常见的太阳被部分遮挡产生的丁达尔现象，通常称为Sun shafts或God ray。
+
+### 实现
+体积光的实现方式大概分两类：基于屏幕空间和基于Shadow map。Unity标准资源库Effects package里自带的Sun shafts实现方式是基于屏幕空间的，
+本文介绍其大致实现步骤。
+![这里写图片描述](/img/in-post/vl/1.jpg)
+<center>原图</center>
+
+#### 绘制天空盒和遮挡物
+根据场景深度把除了天空盒和光源之外其他都绘制成黑色。<br />
+c#：
+```
+    GetComponent<Camera>().depthTextureMode |= DepthTextureMode.Depth;
+```
+把相机切换为绘制深度模式。
+
+shader:
+```
+half4 frag_depth (v2f i) : SV_Target {
+    #if UNITY_UV_STARTS_AT_TOP
+    float depthSample = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, UnityStereoScreenSpaceUVAdjust(i.uv1.xy, _CameraDepthTexture_ST));
+    #else
+    float depthSample = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, UnityStereoScreenSpaceUVAdjust(i.uv.xy, _CameraDepthTexture_ST));
+    #endif
+    
+    half4 tex = tex2D (_MainTex, UnityStereoScreenSpaceUVAdjust(i.uv.xy, _MainTex_ST));
+    
+    depthSample = Linear01Depth (depthSample);
+     
+    // consider maximum radius
+    #if UNITY_UV_STARTS_AT_TOP
+    half2 vec = _SunPosition.xy - i.uv1.xy;
+    #else
+    half2 vec = _SunPosition.xy - i.uv.xy;      
+    #endif
+    half dist = saturate (_SunPosition.w - length (vec.xy));        
+    
+    half4 outColor = 0;
+    
+    // consider shafts blockers
+    if (depthSample > 0.99)
+        outColor = TransformColor (tex) * dist;
+        
+    return outColor;
+}
+```
+其中Linear01Depth把场景深度线性化，使得近平面的深度为0，远平面的深度为1，屏蔽了平台差异（某些DX平台深度值刚好相反）。
+
+这里无限远天空盒（depthSample > 0.99）处理成白色，其他都处理为黑色（half4 outColor = 0），得到的效果如下：
+![这里写图片描述](/img/in-post/vl/2.jpg)
+<center>光源和遮挡物</center>
+
+#### 模糊处理
+对上一步得到的render texture做模糊处理。
+
+c#：
+```
+    v = GetComponent<Camera>().WorldToViewportPoint (sunTransform.position);
+    ...
+    sunShaftsMaterial.SetVector ("_SunPosition", new Vector4 (v.x, v.y, v.z, maxRadius));
+```
+把光源的世界坐标转换为屏幕坐标传给shader。
+
+
+shader:
+```
+    struct v2f_radial 
+    {
+        float4 pos : SV_POSITION;
+        float2 uv : TEXCOORD0;
+        float2 blurVector : TEXCOORD1;
+    };
+
+    v2f_radial vert_radial( appdata_img v ) {
+        v2f_radial o;
+        o.pos = UnityObjectToClipPos(v.vertex);
+        
+        o.uv.xy =  v.texcoord.xy;
+        o.blurVector = (_SunPosition.xy - v.texcoord.xy) * _BlurRadius4.xy; 
+        
+        return o; 
+    }
+
+    half4 frag_radial(v2f_radial i) : SV_Target 
+    {   
+        half4 color = half4(0,0,0,0);
+        for(int j = 0; j < SAMPLES_INT; j++)   
+        {   
+            half4 tmpColor = tex2D(_MainTex, UnityStereoScreenSpaceUVAdjust(i.uv.xy, _MainTex_ST));
+            color += tmpColor;
+            i.uv.xy += i.blurVector;    
+        }
+        return color / SAMPLES_FLOAT;
+    }
+```
+根据屏幕像素uv坐标和光源屏幕坐标来确定采样方向，叠加6次后求平均得到像素颜色。<br />
+其中采样步长_BlurRadius4由脚本传递进来:
+
+C#：
+```
+    ofs = sunShaftBlurRadius * (((it2 * 2.0f + 1.0f) * 6.0f)) / 768.0f;
+    sunShaftsMaterial.SetVector ("_BlurRadius4", new Vector4 (ofs, ofs, 0.0f, 0.0f) );
+
+    lrDepthBuffer = RenderTexture.GetTemporary (rtW, rtH, 0);
+    Graphics.Blit (lrColorB, lrDepthBuffer, sunShaftsMaterial, 1);
+    RenderTexture.ReleaseTemporary (lrColorB);
+    ofs = sunShaftBlurRadius * (((it2 * 2.0f + 2.0f) * 6.0f)) / 768.0f;
+    sunShaftsMaterial.SetVector ("_BlurRadius4", new Vector4 (ofs, ofs, 0.0f, 0.0f) );
+```
+
+迭代计算依次后结果为：
+![这里写图片描述](/img/in-post/vl/3.jpg)
+<center>小图2为1次迭代结果，小图3为2次迭代结果，小图4为最终模糊结果</center>
+
+#### 叠加
+把模糊后的render texture跟原图进行叠加。
+
+```
+half4 fragAdd(v2f i) : SV_Target { 
+    half4 colorA = tex2D (_MainTex, UnityStereoScreenSpaceUVAdjust(i.uv.xy, _MainTex_ST));
+    #if UNITY_UV_STARTS_AT_TOP
+    half4 colorB = tex2D (_ColorBuffer, UnityStereoScreenSpaceUVAdjust(i.uv1.xy, _ColorBuffer_ST));
+    #else
+    half4 colorB = tex2D (_ColorBuffer, UnityStereoScreenSpaceUVAdjust(i.uv.xy, _ColorBuffer_ST));
+    #endif
+    half4 depthMask = saturate (colorB * _SunColor);    
+    return colorA + depthMask;  
+}
+```
+其中colorB为模糊后的render texture，乘以_SunColor后与原图colorA做颜色叠加"+"。<br />
+结果为：
+![这里写图片描述](/img/in-post/vl/4.jpg)
+<center>最终体积光效果图</center>
+
+### 接下来
+本文介绍的体积光效果是基于屏幕空间的方向光实现方式，后续文章将会剖析基于Shadow map和点光源的实现。
+
+参考文献：<br />
+http://fabiensanglard.net/lightScattering/ <br />
+https://github.com/SlightlyMad/VolumetricLights <br />
+http://phaazon.blogspot.tw/2015/04/volumetric-light-shafts.html
