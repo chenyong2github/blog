@@ -16,7 +16,7 @@ tags:
 
 ### 实现
 体积光的实现方式大概分两类：基于屏幕空间和基于Shadow map。Unity标准资源库Effects package里自带的Sun shafts实现方式是基于屏幕空间的，
-本文介绍其大致实现步骤。
+本文介绍其大致实现步骤。先上原图：
 ![这里写图片描述](/img/in-post/vl/1.jpg)
 <center>原图</center>
 
@@ -143,10 +143,10 @@ half4 fragAdd(v2f i) : SV_Target {
 ```
 其中colorB为模糊后的render texture，乘以_SunColor后与原图colorA做颜色叠加"+"，得到最终结果：
 ![这里写图片描述](/img/in-post/vl/4.jpg)
-<center>最终体积光效果图</center>
+<center>最终Sun shafts效果图</center>
 
 ### 接下来
-本文介绍的体积光效果是基于屏幕空间的方向光实现方式，后续文章将会剖析基于Shadow map和点光源的实现。
+本文介绍的Sun shafts是基于屏幕空间的方向光的体积光实现，后续文章将会剖析基于Shadow map和点光源的体积光实现。
 
 参考文献：<br />
 http://fabiensanglard.net/lightScattering/ <br />
