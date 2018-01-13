@@ -1,6 +1,6 @@
 ---
 layout:     post
-title:      "体积光方案剖析与应用(1)"
+title:      "体积光方案剖析&应用(1)"
 date:       2017-12-25
 author:     "ChenYong"
 header-img: "img/post-bg-sunshafts.jpg"
@@ -12,7 +12,7 @@ tags:
 ---
 
 ### 简述
-体积光（Volumetric Light）是光线越过遮挡物产生的一种大气散射现象（丁达尔现象）。生活中较常见的太阳被部分遮挡产生的丁达尔现象，通常称为Sun shafts或God ray。
+体积光（Volumetric Light）是光线越过遮挡物产生的一种大气散射现象——丁达尔现象。生活中较常见的太阳被部分遮挡产生的丁达尔现象，通常称为Sun shafts或God ray。
 
 ### 实现
 体积光的实现方式大概分两类：基于屏幕空间和基于Shadow map。Unity标准资源库Effects package里自带的Sun shafts实现方式是基于屏幕空间的，
@@ -141,8 +141,7 @@ half4 fragAdd(v2f i) : SV_Target {
     return colorA + depthMask;  
 }
 ```
-其中colorB为模糊后的render texture，乘以_SunColor后与原图colorA做颜色叠加"+"。<br />
-结果为：
+其中colorB为模糊后的render texture，乘以_SunColor后与原图colorA做颜色叠加"+"，得到最终结果：
 ![这里写图片描述](/img/in-post/vl/4.jpg)
 <center>最终体积光效果图</center>
 
