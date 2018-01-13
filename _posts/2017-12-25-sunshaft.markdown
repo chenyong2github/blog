@@ -62,7 +62,7 @@ half4 frag_depth (v2f i) : SV_Target {
 
 这里无限远天空盒（depthSample > 0.99）处理成白色，其他都处理为黑色（half4 outColor = 0），得到的效果如下：
 ![这里写图片描述](/img/in-post/vl/2.jpg)
-<center>光源和遮挡物</center>
+<center>绘制光源和遮挡物结果图</center>
 
 #### 模糊处理
 对上一步得到的render texture做模糊处理。
