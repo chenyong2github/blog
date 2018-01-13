@@ -122,9 +122,9 @@ C#：
     sunShaftsMaterial.SetVector ("_BlurRadius4", new Vector4 (ofs, ofs, 0.0f, 0.0f) );
 ```
 
-迭代计算依次后结果为：
+迭代计算依次结果为：
 ![这里写图片描述](/img/in-post/vl/3.jpg)
-<center>小图2为1次迭代结果，小图3为2次迭代结果，小图4为最终模糊结果</center>
+<center>小图2为1次迭代结果，图3为2次迭代结果，图4为最终模糊结果</center>
 
 #### 叠加
 把模糊后的render texture跟原图进行叠加。
