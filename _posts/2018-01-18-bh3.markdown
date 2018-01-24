@@ -100,6 +100,32 @@ shader部分:
 
 #### 光影变化
 这里的光影变化是一个附加的实现效果，实际崩3游戏里角色并没有很强的光影效果，不过这也跟它游戏场景没有动态光源有关，这样的话整个画面会显得很干净。
+
+shader部分:
+```
+	Pass {
+		Name "FORWARD_DELTA"
+		Tags { "LightMode" = "ForwardAdd" }
+
+		ZWrite Off Blend One One Fog { Color (0,0,0,0) }
+		CGPROGRAM
+		#pragma target 2.0
+		#pragma exclude_renderers flash
+		#pragma vertex vert_surf
+		#pragma fragment frag_surf
+		#pragma fragmentoption ARB_precision_hint_fastest
+		#pragma multi_compile_fwdadd_fullshadows
+		#pragma shader_feature LightTex_R
+		#pragma shader_feature LightTex_G
+		#pragma shader_feature LightTex_B
+		#pragma shader_feature _SPEC_TOON
+		#pragma shader_feature _STYLIZED_FRESNEL
+		#include "MMDLit-Surface-ForwardAdd.cginc"
+		ENDCG
+	}
+```
+shader部分没有什么特别，只是加入了对点光源的光照计算。Unity里加个Tags { "LightMode" = "ForwardAdd" }的Pass。
+
 ![这里写图片描述](/img/in-post/bh3/1.gif)
 <center>动态点光影渲染效果</center>
 
