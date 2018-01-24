@@ -1,0 +1,111 @@
+---
+layout:     post
+title:      "崩坏3rd的角色卡通渲染研究"
+date:       2018-01-18
+author:     "ChenYong"
+header-img: "img/post-bg-bh3.jpg"
+tags:
+    - Unity
+    - Graphics
+    - Shader
+    - 原创
+---
+
+### 简述
+崩坏3rd的角色卡通渲染是目前手游卡通渲染的标杆，任何后来的卡通渲染手游项目估计都会研究它的渲染技术。作为追赶者之一，本文通过一些卡通渲染技术文档，以及在手机上运行抓帧，对其渲染技术一探究竟。
+
+
+#### Guilty Gear Xrd
+崩坏3rd为日式卡渲风格，并不是完全创新，而是模仿于主机游戏Guilty Gear Xrd（游戏名字也有点类似）。Guilty Gear Xrd官方在2005 GDC上开放了其渲染相关的技术文档（地址见参考文献）。研究中分别对GGX与崩3抓帧，也可以看出它们的贴图使用方式类似。
+![这里写图片描述](/img/in-post/bh3/3.jpg)
+<center>GGX与崩3角色对比</center>
+
+### 实现
+本文对崩坏3rd效果的模拟是在MMD For Unity生成的材质shader基础上修改得到的。MMD（全名MikuMikuDance）是由日本人樋口优开发的一组3D动画制作软件。MMD的模型也是偏日式卡通风格，而且MMD For Unity插件可以把MMD模型资源生成Unity支持的shader和材质。
+
+#### 阴影
+崩坏3rd有明显的明暗边界，一般通过采样颜色突变的渐变贴图实现。采样值由NdotL、self-shadow和自定义shadow 3个值决定。
+![这里写图片描述](/img/in-post/bh3/4.jpg)
+<center>不同的采样值效果对比</center>
+上图分别显示了直接用NdotL、NdotL和self-shadow的较小值、NdotL、self-shadow和自定义shadow 3者的最小值作为渐变贴图贴图采样值的效果。
+注意头发和脸部阴影的变化，中图头发受到头部遮挡产生阴影，右图脸部用了自定义shadow。<br />
+自定义shadow可理解为假阴影，目的是让模型某些部位（比如脸部）不受实际的灯光方向和自遮挡影响，而只从美术绘制的贴图中取值。假阴影的思路跟GGX通过调整顶点法线来修正明暗变化的方式类似，崩3作为手游，模型顶点有限，而且为了节省贴图量，只使用了贴图的一个通道。
+
+![这里写图片描述](/img/in-post/bh3/5.jpg)
+<center>GGX角色的脸部法线调整与崩3角色的脸部假阴影</center>
+
+shader部分:
+```
+inline half3 MMDLit_GetRamp(half NdotL, half shadowAtten, half NdotL_tex)
+{
+	half refl = NdotL;
+	#ifdef LightTex_G
+		refl = NdotL_tex;
+	#else
+		refl = saturate(min(MMDLit_GetToolRefl(NdotL), MMDLit_GetShadowAttenToToon(shadowAtten)));	
+		refl = saturate(min(refl, NdotL_tex));
+	#endif
+	
+	half3 ramp = (half3)tex2D(_ToonTex, half2(refl, refl));
+
+	ramp = saturate(1.0 - (1.0 - ramp) * _ShadowLum);
+	return ramp;
+}
+```
+
+#### 高光
+崩坏3rd用一张名为LightMap贴图（不是烘焙的lightmap）控制高光效果，Red通道用于控制高光聚散度pow值，Blue通道作用是高光遮罩（Green通道用于上文提到的假阴影，Alpha通道未使用）。
+![这里写图片描述](/img/in-post/bh3/7.jpg)
+<center>崩3角色头发的R通道和B通道</center>
+
+shader部分:
+```
+	fixed kspec = _Shininess;
+	fixed specMask = 1;
+#ifdef LightTex_R
+	kspec = lightTex.r * _LightTex_R_offset;
+#endif	
+
+#ifdef LightTex_B
+	specMask = lightTex.b * _LightTex_B_offset;
+#endif		
+
+#ifdef _SPEC_TOON
+	half refl = MMDLit_SpecularRefl(normal, lightDir, viewDir, kspec);
+	refl = smoothstep(_SpecMin, _SpecMax, refl);
+	half3 specular = specMask*_Specular.rgb*lightColor * refl;
+
+	c += specular;	
+#endif
+
+	// Dedicated Rim Lighting
+#ifdef _UPWARD_FRESNEL
+	fixed fr = pow(1 - max(0, dot(normal, viewDir)), 4);
+	fixed drim = max(0, dot(normal, fixed3(0, 1, 0)));
+	c += fr*drim*_UpwardRimStrength*UNITY_LIGHTMODEL_AMBIENT;
+#endif 
+
+	// Enhanced Rim/Fresnel
+#ifdef _STYLIZED_FRESNEL
+	half rim = 1 - max(0, dot(normal, viewDir));
+	rim = smoothstep(_RimMin, _RimMax, rim) * _RimStrength;
+	c += rim * max(0, dot(normal, lightDir)) * lightColor;
+#endif
+```
+这里在普通高光计算的基础上，_SPEC_TOON部分加入了高光边缘的控制，减少高光的平滑过渡。_UPWARD_FRESNEL和_STYLIZED_FRESNEL部分加入了边缘光。<br />
+下图展示了角色模型加入高光的前后对比，注意面朝光源方向的头发和身体部分。
+
+![这里写图片描述](/img/in-post/bh3/6.jpg)
+<center>崩3角色加入高光的前后对比</center>
+
+#### 光影变化
+这里的光影变化是一个附加的实现效果，实际崩3游戏里角色并没有多强的光影效果。
+![这里写图片描述](/img/in-post/bh3/1.gif)
+<center>动态光影渲染效果</center>
+
+### 结论
+研究中基本上还原了崩坏3rd的角色渲染部分，当然还有很多技巧用于崩坏3rd使得它的画面这么优秀，人设、建模、场景、特效等等，路漫漫其修远兮~~~。
+
+参考文献：<br />
+http://www.ggxrd.com/Motomura_Junya_GuiltyGearXrd.pdf <br />
+https://zhuanlan.zhihu.com/pixelife/26409746 <br />
