@@ -57,7 +57,7 @@ shader中的参数shadowAtten为SHADOW_ATTENUATION的返回值，NdotL_tex为贴
 #### 高光
 崩坏3rd用一张名为LightMap贴图（不是烘焙的lightmap）控制高光效果，Red通道用于控制高光聚散度pow值，Blue通道作用是高光遮罩（Green通道用于上文提到的假阴影，Alpha通道未使用）。
 ![这里写图片描述](/img/in-post/bh3/7.jpg)
-<center>崩3角色头发的R通道和B通道</center>
+<center>崩3角色头发LightMap贴图的R通道和B通道</center>
 
 shader部分:
 ```
@@ -98,6 +98,17 @@ shader部分:
 
 ![这里写图片描述](/img/in-post/bh3/6.jpg)
 <center>崩3角色加入高光的前后对比</center>
+
+#### 勾边
+模型外勾边原理和实现都比较简单：
+>在绘制结束正常的模型后，将需要描边的物体改用正面剔除再绘制一遍，在VS中将顶点沿着法线方向膨胀一定距离，然后在FS中将模型用纯色输出。
+
+GGX的模型有内勾边，由美术绘制保存到LightMap贴图的Alpha通道，崩3没使用。拿GGX模型贴图导入到Unity里，加入外勾边和内勾边测试结果如下：
+![这里写图片描述](/img/in-post/bh3/8.jpg)
+<center>GGX角色勾边前后对比</center>
+![这里写图片描述](/img/in-post/bh3/9.jpg)
+<center>GGX角色LightMap贴图Alpha通道</center>
+内勾边的shader计算也很简单，拿alpha值与主贴图颜色相乘即可c *= lightTex.a;
 
 #### 光影变化
 这里的光影变化是一个附加的实现效果，实际崩3游戏里角色并没有很强的光影效果，不过这也跟它游戏场景没有动态光源有关，这样的话整个画面会显得很干净。
