@@ -24,10 +24,10 @@ tags:
 本文对崩坏3rd效果的模拟是在MMD For Unity生成的材质shader基础上修改得到的。MMD（全名MikuMikuDance）是由日本人樋口优开发的一组3D动画制作软件。MMD的模型也是偏日式卡通风格，而且MMD For Unity插件可以把MMD模型资源生成Unity支持的shader和材质。
 
 #### 阴影
-崩坏3rd有明显的明暗边界，一般通过采样颜色突变的渐变贴图实现。采样值由NdotL、self-shadow和自定义shadow 3个值决定。
+崩坏3rd有明显的明暗边界，一般通过采样颜色突变的渐变贴图实现。采样值由NdotL、shadow和自定义shadow 3个值决定。
 ![这里写图片描述](/img/in-post/bh3/4.jpg)
 <center>不同的采样值效果对比</center>
-上图分别显示了直接用NdotL、NdotL和self-shadow的较小值、NdotL、self-shadow和自定义shadow 3者的最小值作为渐变贴图贴图采样值的效果。
+上图分别显示了直接用NdotL、NdotL和shadow的较小值、NdotL、shadow和自定义shadow 3者的最小值作为渐变贴图贴图采样值的效果。
 注意头发和脸部阴影的变化，中图头发受到头部遮挡产生阴影，右图脸部用了自定义shadow。<br />
 自定义shadow可理解为假阴影，目的是让模型某些部位（比如脸部）不受实际的灯光方向和自遮挡影响，而只从美术绘制的贴图中取值。假阴影的思路跟GGX通过调整顶点法线来修正明暗变化的方式类似，崩3作为手游，模型顶点有限，而且为了节省贴图量，只使用了贴图的一个通道。
 
@@ -52,6 +52,7 @@ inline half3 MMDLit_GetRamp(half NdotL, half shadowAtten, half NdotL_tex)
 	return ramp;
 }
 ```
+shader中的参数shadowAtten为SHADOW_ATTENUATION的返回值，NdotL_tex为贴图采样得到的假阴影。LightTex_G用于控制是否完全返回假阴影。
 
 #### 高光
 崩坏3rd用一张名为LightMap贴图（不是烘焙的lightmap）控制高光效果，Red通道用于控制高光聚散度pow值，Blue通道作用是高光遮罩（Green通道用于上文提到的假阴影，Alpha通道未使用）。
