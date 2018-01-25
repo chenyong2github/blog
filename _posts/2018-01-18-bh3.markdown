@@ -108,7 +108,7 @@ GGX的模型有内勾边，由美术绘制保存到LightMap贴图的Alpha通道�
 <center>GGX角色勾边前后对比</center>
 ![这里写图片描述](/img/in-post/bh3/9.jpg)
 <center>GGX角色LightMap贴图Alpha通道</center>
-内勾边的shader计算也很简单，拿alpha值与主贴图颜色相乘即可c *= lightTex.a;
+内勾边的shader计算也很简单，拿LightMap的alpha值与主贴图颜色相乘即可c *= lightTex.a。
 
 #### 光影变化
 这里的光影变化是一个附加的实现效果，实际崩3游戏里角色并没有很强的光影效果，不过这也跟它游戏场景没有动态光源有关，这样的话整个画面会显得很干净。
