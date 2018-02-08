@@ -56,7 +56,8 @@ kramdown:
 #duoshuo_share: true                     # set to false if you want to use Comment without Sharing
 
 # Uyan settings
-uyan_username: yongchen1983.126.com
+#uyan_username: yongchen1983.126.com
+livere_uid: MTAyMC8zNDAwNS8xMDU0Mw
 
 
 # Analytics settings

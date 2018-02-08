@@ -111,13 +111,12 @@ layout: default
                 <!-- disqus 评论框 end -->
                 {% endif %}
 
-                {% if site.uyan_username %}
-                <!-- UY BEGIN -->
+                {% if site.livere_uid %}
+                <!-- livere 评论框 start -->
                 <div class="comment">
-                    <div id="uyan_frame"></div>
-                    <script type="text/javascript" src="http://v2.uyan.cc/code/uyan.js"></script>
+                    <div id="lv-container" data-id="city" data-uid="{{ site.livere_uid }}"></div>
                 </div>
-                <!-- UY END -->
+                <!-- livere 评论框 end -->
                 {% endif %}
             </div>
 
