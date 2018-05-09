@@ -13,13 +13,13 @@ tags:
 
 ### LINEAR SPACE
 线性空间是什么？简单的说，在线性空间对数字化的颜色和光照强度进行相加相乘计算得到的结果依然能与真实的结果一致。不具备这条性质就被称为“非线性”空间。见下图：
-![这里写图片描述](http://img.blog.csdn.net/20161208140751351?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQvYmlsbDJjY3NzZGRubg==/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/SouthEast)
+![这里写图片描述](/img/in-post/gamma/1.png)
  
 ### GAMMA SPACE
 伽马（gamma）的产生原因主要有两点：第一是CRT显示器的历史原因，对显示图像的处理是非线性的。第二是因为人眼对明暗色域的辨识度不一样，有时需要对图像进行非线性处理来获得合适的辨识度，这些非线性处理叫做伽马纠正（gamma correction），具体实现是对图像中的每个像素做一次幂函数运算。伽马特指这个幂函数的指数值。见下图：
-![这里写图片描述](http://img.blog.csdn.net/20161208140807430?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQvYmlsbDJjY3NzZGRubg==/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/SouthEast) 
+![这里写图片描述](/img/in-post/gamma/2.png)
 上图中，很显然除1以外的伽马值都是非线性的。下图展示了用上图中的不同伽马值对图像做伽马纠正得到的结果： 
-![这里写图片描述](http://img.blog.csdn.net/20161208140903353?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQvYmlsbDJjY3NzZGRubg==/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/SouthEast)
+![这里写图片描述](/img/in-post/gamma/3.png)
 重要！！！现实中绝大部分的图片都是被伽马值为0.45纠正过的，也就是说图片文件存储的都是伽马纠正过的颜色值。做伽马纠正几乎是每台相机、每个图像编辑软件在存储图像时默认要做的事。
 
 但为什么图像很够正确显示，而不是像左图一样看起来过爆呢？这是显示器显示的时候做了非线性处理导致的。CRT显示器显示图像的时候做了伽马值为2.2的纠正，之后的LCD显示器为了兼容性也做了同样的纠正。2.2为0.45的倒数，互相抵消得到了与原始一致的图像。如果图片没有做伽马纠正，显示的图像将是像右图一样，颜色被压黑。
@@ -28,7 +28,7 @@ tags:
 在实时渲染管线中，如果采用伽马空间，那么伽马纠正过的贴图在着色器（shader）中直接参与光照计算，得到的图像被显示器伽马纠正后输出显示。这个过程很简单，但物理上是不正确的。在真实世界中，光照行为是线性的，着色器中的数字化的光照计算也是线性的，而输入的贴图和颜色是非线性的，这意味说着色结果是不准确的。在越来越追求画面沉浸感和真实性的今天，伽马空间的光照计算满足不了需求。
 
 因此，PBR使用了线性空间，贴图和颜色去除了伽马纠正转换到线性空间，再传递给着色器进行光照计算着色，之后的后期处理（post effects）也同样在线性空间下进行，最后获得的图像再做伽马值0.45纠正，以抵消显示器显示时2.2的伽马纠正。下图是渲染管线采用伽马空间和线性空间的流程和结果对比：
-![这里写图片描述](http://img.blog.csdn.net/20161208140918822?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQvYmlsbDJjY3NzZGRubg==/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/SouthEast) 
+![这里写图片描述](/img/in-post/gamma/4.png)
 上图中简单球体的渲染差异可以注意到：伽马空间高光的更亮，衰减范围更大。这些都是缺乏真实性的渲染结果。
 
 ### COLOR SPACES IN UNITY
