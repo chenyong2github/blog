@@ -143,6 +143,8 @@ shader部分没有什么特别，只是加入了对点光源的光照计算。Un
 
 ### 结论
 研究中基本上还原了崩坏3rd的角色渲染部分，当然还有很多技巧用于崩坏3rd使得它的画面这么优秀，人设、建模、场景、特效等等，路漫漫其修远兮~~~。
+![这里写图片描述](/img/in-post/bh3/10.jpg)
+<center>试验过程效果迭代图</center>
 
 参考文献：<br />
 http://www.ggxrd.com/Motomura_Junya_GuiltyGearXrd.pdf <br />
