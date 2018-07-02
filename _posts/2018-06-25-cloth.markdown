@@ -19,7 +19,7 @@ tags:
 丝绸类织物会有更丰富的高光颜色。
 ![这里写图片描述](/img/in-post/fabric/2.png)
 <center>现实织物的物理表现</center>
-这些物理特性表面部分适合用PBR的metalic和Rougthness来描述，绒毛和高光部分需增加一个Fabric Scatter模型来描述，详细见下文。
+这些物理特性中的表面部分适合用PBR的metalic和Rougthness来描述，绒毛和高光部分需增加一个Fabric Scatter模型来描述，详细见下文。
 ![这里写图片描述](/img/in-post/fabric/1.png)
 <center>模拟织物的PBR参数</center>
 
@@ -29,7 +29,7 @@ tags:
 #### Inverted Gaussian
 布料织物有其特有的光照反射模型。以天鹅绒为例，它的高光位置不是灯光和视线的正对区域，而是边缘位置。
 ![这里写图片描述](/img/in-post/fabric/3.jpg)
-<center>Microfacet反射与实际织物的反射对比</center>
+<center>理想高光反射与实际织物的反射对比</center>
 
 标准PBR的Microfacet GGX分布在0角度下（法线、灯光和视线同向）获得最大的高光强度，然后随着角度的增大做正太（Gaussian）分布，
 而天鹅绒高光分布与GGX刚好相反，可见GGX的分布模型并不适合某些布料的模拟。
