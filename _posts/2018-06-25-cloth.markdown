@@ -49,7 +49,7 @@ inline float FabricD (float NdotH, float roughness)
 用FabricD替换掉UnityStandardBRDF.cginc的BRDF1_Unity_PBS函数的GGXTerm。
 
 ![这里写图片描述](/img/in-post/fabric/6.jpg)
-<center>roughness为1时GGX高光与自定义高光结果对比</center>
+<center>Roughness为1时GGXTerm与FabricD结果对比</center>
 
 #### Fabric Scatter
 布料织物的绒毛效果可由边缘光来模拟，再综合丝绸的高光颜色，参考文献1的作者给出一个Fabric Scatter**经验**模型：<br />
