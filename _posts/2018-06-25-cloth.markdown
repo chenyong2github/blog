@@ -22,7 +22,7 @@ tags:
 下图为参考文献1的作者给出的描述不同布料织物的PBR**经验**参数：
 ![这里写图片描述](/img/in-post/fabric/1.png)
 <center>模拟织物的PBR参数</center>
-注意上图中的velvet（天鹅绒）的Rougthness和metalic都为1，这符合天鹅绒表面粗糙，看起来很黑（漫反射很弱）的物理特性。
+注意上图中的velvet（天鹅绒）的rougthness和metalic都为1，这符合天鹅绒表面粗糙，看起来很黑（漫反射很弱）的物理特性。
 
 ### Microfiber Model
 
