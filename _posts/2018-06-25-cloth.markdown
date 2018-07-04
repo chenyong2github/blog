@@ -81,7 +81,7 @@ half3 color =   diffColor * (gi.diffuse + light.color * diffuseTerm)
 
 ### 结果2
 ![这里写图片描述](/img/in-post/fabric/cloth.jpg)
-<center>自定义实现的棉布、天鹅绒和丝绸效果</center>
+<center>自定义实现的棉布和丝绸效果</center>
 
 ### 附
 完整FABRIC_BRDF_PBS代码：
