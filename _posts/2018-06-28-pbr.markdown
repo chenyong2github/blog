@@ -1,0 +1,140 @@
+---
+layout:     post
+title:      "自定义PBR"
+date:       2018-07-10
+author:     "ChenYong"
+header-img: "img/post-bg-xb.jpg"
+tags:
+    - Unity
+    - Graphics
+    - PBR
+    - 原创
+---
+
+### 为什么要自定义PBR？
+
+基于物理的渲染(PBR, Physically based rendering)采用了物理真实的光照模型，符合直观认知规律，近年来逐渐流行。PBR可理解为是一套渲染标准，
+具体实现由各大引擎自己负责，Unity的标准PBR实现叫Standard。
+![这里写图片描述](/img/in-post/pbr/8.jpg)
+<center>Toolbag3与Unity Standard PBR渲染结果对比</center>
+上图为模型分别在Marmoset Toolbag 3渲染器与Unity中Standard渲染效果对比，可以看出效果比较接近。
+
+基于标准化可以保证美术资源跨渲染器的效果一致性，有利于简化美术流程，但是只使用标准PBR达不到具体游戏项目的渲染需求，因为游戏风格差异化大多来自对渲染的自定义，比如卡通化PBR渲染。卡通渲染也叫非真实渲染(NPR, Non-Photorealistic rendering)，
+从名字上看NPR与PBR两者很冲突，仿佛卡通化PBR是个伪命题，但业内有两者结合的很好的例子：
+![这里写图片描述](/img/in-post/pbr/9.jpg)
+<center>异度之刃2的游戏截图</center>
+上图为NS主机游戏异度之刃2的游戏截图，角色脸部和头发都是比较卡通的，其它部分的金属质感盔甲和场景都是写实风格的。
+
+异度之刃2在非真实建模的前提下，真实渲染和非真实渲染结合，配合后期调色，形成到了游戏特有的卡渲风格。游戏角色脸部和头发渲染这种具有PBR属性，但又风格化的渲染就属于自定义PBR。
+
+### 如何自定义PBR
+本文的自定义PBR是在Unity的Standard的基础上去修改和扩展。
+先看Unity的Standard实现：
+![这里写图片描述](/img/in-post/pbr/uml.png)
+<center>Unity的Standard Forward绘制调用示意图</center>
+在此基础上去自定义，对内主要包括修改和扩展上图中的数据结构、光照模型和绘制过程。对外给用户提供可选择的Shading Model：
+![这里写图片描述](/img/in-post/pbr/10.png)
+<center>UE的Shading Model和Unity扩展代码文件</center>
+上图右为我在Unity中按UE4方式扩展实现的代码文件列表，其中TT_Unity???.cginc为Unity内部实现的Unity???.cginc的修改扩展版本。
+
+shader文件去定义Shadering Model的类型，比如TT_Character_Skin.shader定义_SKIN类型：
+```
+SubShader
+{
+	Tags{ "RenderType" = "Opaque" "PerformanceChecks" = "False" }
+	LOD 300
+
+	CGINCLUDE
+	...
+	#define _SKIN 1
+	...
+```
+
+TT_UnityStandardBRDF.cginc扩展了各个Shadering Model的实现：
+```
+half4 SKIN_BRDF_PBS(half3 diffColor, half3 specColor, half oneMinusReflectivity, half smoothness,
+    float3 normal, float3 viewDir,
+    UnityLight light, UnityIndirect gi, half4 sssTex)
+{
+	...
+}
+
+half4 HAIR_BRDF_PBS (half3 diffColor, half3 specColor, half oneMinusReflectivity, half smoothness,
+    float3 normal, float3 viewDir,
+    UnityLight light, UnityIndirect gi, float3 tangentWorld = float3(0, 0, 1), half2 anisoCtrl = half2(1, 1))
+{
+	...
+}
+
+half4 CLEARCOAT_BRDF_PBS (half3 diffColor, half3 specColor, half oneMinusReflectivity, half smoothness,
+    float3 normal, float3 viewDir,
+    UnityLight light, UnityIndirect gi, float3 normal_clearcoat, UnityIndirect gi_clearcoat)
+{
+	...	
+}
+
+half4 FABRIC_BRDF_PBS (half3 diffColor, half3 specColor, half oneMinusReflectivity, half smoothness,
+    float3 normal, float3 viewDir,
+    UnityLight light, UnityIndirect gi)
+{
+	...
+}
+```
+
+TT_UnityStandardCore.cginc根据Shadering Model的类型选择实现：
+```
+half4 fragForwardBaseInternal (VertexOutputForwardBase i)
+{
+	...
+#if _SKIN
+    half4 c = SKIN_BRDF_PBS(s.diffColor, s.specColor, s.oneMinusReflectivity, s.smoothness, s.normalWorld, -s.eyeVec, gi.light, gi.indirect, sssTex);
+#elif _HAIR
+    half4 c = HAIR_BRDF_PBS(s.diffColor, s.specColor, s.oneMinusReflectivity, s.smoothness, s.normalWorld, -s.eyeVec, gi.light, gi.indirect, s.tangentWorld, anisoMap.rg);
+#elif _CLEARCOAT
+    half4 c = CLEARCOAT_BRDF_PBS(s.diffColor, s.specColor, s.oneMinusReflectivity, s.smoothness, s.normalWorld, -s.eyeVec, gi.light, gi.indirect, s.normalWorld_clearcoat, gi_clearcoat.indirect);
+#elif _FABRIC
+    half4 c = FABRIC_BRDF_PBS(s.diffColor, s.specColor, s.oneMinusReflectivity, s.smoothness, s.normalWorld, -s.eyeVec, gi.light, gi.indirect);
+#else
+    half4 c = UNITY_BRDF_PBS(s.diffColor, s.specColor, s.oneMinusReflectivity, s.smoothness, s.normalWorld, -s.eyeVec, gi.light, gi.indirect);
+#endif
+	...
+}
+```
+
+下面对各个Shading Model的理论模型和具体实现依次展开介绍。
+#### Subsurface
+>The Subsurface Shading Model simulates the effect of Subsurface Scattering. 
+This is a real-world phenomenon in which light penetrates a surface and then diffuses throughout it. 
+It can be most readily seen on such objects as ice, wax candles, and skin. 
+
+>the final colour of our pixels depend is the sum of two components. The first one is the “traditional” lighting. 
+The second one is the light contribution from a virtual light source illuminating the back of our model. 
+This gives the impression that light from the original source actually passed through the material.
+![这里写图片描述](/img/in-post/pbr/11.png)
+<center>Subsurface理论模型</center>
+
+理论模型实现核心部分：
+```
+half4 SUBSUFACE_BRDF_PBS(half3 diffColor, half3 specColor, half oneMinusReflectivity, half smoothness,
+    float3 normal, float3 viewDir,
+    UnityLight light, UnityIndirect gi, half4 sssTex)
+{
+    ...
+    //	Translucency
+    float3 H = normalize(light.dir + normal * _Distortion);
+    float transDot = pow(saturate(dot(viewDir, -H)), _Power) * thickness * _ThicknessScale;
+    half3 lightScattering = transDot * _SubColor;
+    ...
+}
+```
+![这里写图片描述](/img/in-post/pbr/12.jpg)
+<center>Subsurface模型实现效果图</center>
+#### Skin
+>The Preintegrated Skin Shading Model is very similar in nature to the Subsurface model, but geared toward low performance cost skin rendering on human characters. 
+#### ClearCoat
+#### Cloth
+#### Hair
+
+参考文献：<br />
+https://marmoset.co/posts/physically-based-rendering-and-you-can-too/
+https://www.alanzucconi.com/2017/08/30/fast-subsurface-scattering-1/
