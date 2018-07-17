@@ -99,6 +99,25 @@ half4 fragForwardBaseInternal (VertexOutputForwardBase i)
 #endif
 	...
 }
+
+...
+
+half4 fragForwardAddInternal (VertexOutputForwardAdd i)
+{
+    ...
+#if _SKIN
+    half4 c = SKIN_BRDF_PBS (s.diffColor, s.specColor, s.oneMinusReflectivity, s.smoothness, s.normalWorld, -s.eyeVec, light, noIndirect, sssTex);
+#elif _HAIR
+    half4 c = HAIR_BRDF_PBS(s.diffColor, s.specColor, s.oneMinusReflectivity, s.smoothness, s.normalWorld, -s.eyeVec, light, noIndirect);
+#elif _CLEARCOAT
+    half4 c = CLEARCOAT_BRDF_PBS(s.diffColor, s.specColor, s.oneMinusReflectivity, s.smoothness, s.normalWorld, -s.eyeVec, light, noIndirect, s.normalWorld_clearcoat, noIndirect);
+#elif _FABRIC
+    half4 c = FABRIC_BRDF_PBS (s.diffColor, s.specColor, s.oneMinusReflectivity, s.smoothness, s.normalWorld, -s.eyeVec, light, noIndirect);
+#else
+    half4 c = UNITY_BRDF_PBS (s.diffColor, s.specColor, s.oneMinusReflectivity, s.smoothness, s.normalWorld, -s.eyeVec, light, noIndirect);
+#endif
+    ...
+}
 ```
 
 下面对各个Shading Model的理论模型和具体实现依次展开介绍。
