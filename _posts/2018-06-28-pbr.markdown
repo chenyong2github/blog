@@ -183,7 +183,7 @@ ClearCoat模型实现核心代码：
 ```
 half4 fragForwardBaseInternal (VertexOutputForwardBase i)
 {
-   ...
+    ...
 #if _CLEARCOAT
     FragmentCommonData s_clearcoat = (FragmentCommonData) 0;
     s_clearcoat.specColor = _ReflectionSpecular.rgb;
@@ -195,7 +195,7 @@ half4 fragForwardBaseInternal (VertexOutputForwardBase i)
 
     half4 c = CLEARCOAT_BRDF_PBS(s.diffColor, s.specColor, s.oneMinusReflectivity, s.smoothness, s.normalWorld, -s.eyeVec, gi.light, gi.indirect, s.normalWorld_clearcoat, gi_clearcoat.indirect);
 #endif    
-   ...
+    ...
 }
 ```
 
@@ -249,20 +249,13 @@ half4 FABRIC_BRDF_PBS (half3 diffColor, half3 specColor, half oneMinusReflectivi
     UnityLight light, UnityIndirect gi)
 {
     ...
-	float D = FabricD (nh, roughness);
-	...
-	half3 color =   diffColor * (gi.diffuse + light.color * diffuseTerm)
-			+ specularTerm * light.color * FresnelTerm (specColor, lh)
-			+ _FabricScatterColor * (nl*0.5 + 0.5) * FabricScatterFresnelLerp(nv, _FabricScatterScale);
-	...
+    float D = FabricD (nh, roughness);
+    ...
+    half3 color =   diffColor * (gi.diffuse + light.color * diffuseTerm)
+		+ specularTerm * light.color * FresnelTerm (specColor, lh)
+		+ _FabricScatterColor * (nl*0.5 + 0.5) * FabricScatterFresnelLerp(nv, _FabricScatterScale);
+    ...
 }
-```
-
-BRDF1_Unity_PBS函数返回颜色：
-```
-half3 color =   diffColor * (gi.diffuse + light.color * diffuseTerm)
-                + specularTerm * light.color * FresnelTerm (specColor, lh)
-                + _FabricScatterColor * (nl*0.5 + 0.5) * FabricScatterFresnelLerp(nv, _FabricScatterScale);
 ```
 ![这里写图片描述](/img/in-post/pbr/16.jpg)
 <center>Cloth模型实现效果图</center>
