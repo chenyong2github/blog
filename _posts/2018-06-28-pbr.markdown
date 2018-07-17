@@ -14,10 +14,7 @@ tags:
 ### 为什么要扩展PBR？
 
 基于物理的渲染(PBR, Physically based rendering)采用了物理真实的光照模型，符合直观认知规律，近年来逐渐流行。PBR可理解为是一套渲染标准，
-具体实现由各大引擎自己负责，Unity的标准PBR实现叫Standard。
-![这里写图片描述](/img/in-post/pbr/8.jpg)
-<center>Toolbag3与Unity Standard PBR渲染结果对比</center>
-上图为模型分别在Marmoset Toolbag 3渲染器与Unity中Standard渲染效果对比，可以看出效果比较接近。
+具体实现由各大引擎自己负责，Unity的标准PBR实现为Standard，UE4中封装成Default Lit。
 
 基于标准化可以保证美术资源跨渲染器的效果一致性，有利于简化美术流程，但是只使用标准PBR达不到具体游戏项目的渲染需求，因为游戏风格差异化大多来自对渲染的自定义，比如卡通化PBR渲染。卡通渲染也叫非真实渲染(NPR, Non-Photorealistic rendering)，
 从名字上看NPR与PBR两者很冲突，仿佛卡通化PBR是个伪命题，但业内有两者结合的很好的例子：
