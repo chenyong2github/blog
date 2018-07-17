@@ -13,16 +13,16 @@ tags:
 
 ### 为什么要扩展PBR？
 
-基于物理的渲染(PBR, Physically based rendering)采用了物理真实的光照模型，符合直观认知规律，近年来逐渐流行。PBR可理解为是一套渲染标准，
-具体实现由各大引擎自己负责，Unity的标准PBR实现为Standard，UE4中封装成Default Lit。
+基于物理的渲染(PBR, Physically based rendering)采用了物理真实的光照模型，符合自然世界的直观认知规律，近年来逐渐流行。PBR可理解为是一套渲染标准，
+具体实现由各大引擎自己负责，Unity的标准PBR实现为Standard，UE4中封装为Default Lit。
 
-基于标准化可以保证美术资源跨渲染器的效果一致性，有利于简化美术流程，但是只使用标准PBR达不到具体游戏项目的渲染需求，因为游戏风格差异化大多来自对渲染的自定义，比如卡通化PBR渲染。卡通渲染也叫非真实渲染(NPR, Non-Photorealistic rendering)，
+标准化有利于简化美术流程，但是只使用标准PBR达不到具体项目的渲染需求，因为游戏风格差异化大多来自对渲染的自定义，比如卡通化PBR渲染。卡通渲染也叫非真实渲染(NPR, Non-Photorealistic rendering)，
 从名字上看NPR与PBR两者很冲突，仿佛卡通化PBR是个伪命题，但业内有两者结合的很好的例子：
 ![这里写图片描述](/img/in-post/pbr/9.jpg)
 <center>异度之刃2的游戏截图</center>
 上图为NS主机游戏异度之刃2的游戏截图，角色脸部和头发都是比较卡通的，其它部分的金属质感盔甲和场景都是写实风格的。
 
-异度之刃2在非真实建模的前提下，真实渲染和非真实渲染结合，配合后期调色，形成到了游戏特有的卡渲风格。游戏角色脸部和头发渲染这种具有PBR属性，但又风格化的渲染就属于自定义PBR。
+异度之刃2在非真实建模的前提下，真实渲染和非真实渲染结合，配合后期调色，形成了游戏特有的卡渲风格。游戏中角色脸部和头发渲染这种具有PBR属性，但又风格化的渲染就属于自定义PBR。
 
 ### 如何扩展PBR
 本文的自定义PBR是在Unity的Standard的基础上去修改和扩展。
@@ -33,19 +33,6 @@ tags:
 ![这里写图片描述](/img/in-post/pbr/10.png)
 <center>UE的Shading Model和Unity扩展代码文件</center>
 上图右为本文在Unity中按UE4方式扩展实现的代码文件列表，其中TT_Unity???.cginc为Unity内部实现的Unity???.cginc的修改扩展版本。
-
-shader文件去定义Shadering Model的类型，比如TT_Character_Skin.shader定义_SKIN类型：
-```
-SubShader
-{
-	Tags{ "RenderType" = "Opaque" "PerformanceChecks" = "False" }
-	LOD 300
-
-	CGINCLUDE
-	...
-	#define _SKIN 1
-	...
-```
 
 TT_UnityStandardBRDF.cginc扩展了各个Shadering Model的实现：
 ```
@@ -117,6 +104,19 @@ half4 fragForwardAddInternal (VertexOutputForwardAdd i)
 }
 ```
 
+具体的shader文件去定义Shadering Model的类型，比如TT_Character_Skin.shader定义了_SKIN类型：
+```
+SubShader
+{
+	Tags{ "RenderType" = "Opaque" "PerformanceChecks" = "False" }
+	LOD 300
+
+	CGINCLUDE
+	...
+	#define _SKIN 1
+	...
+```
+
 下面对各个Shading Model的理论模型和具体实现依次展开介绍。
 #### Subsurface
 >The Subsurface Shading Model simulates the effect of Subsurface Scattering. 
@@ -130,7 +130,7 @@ This gives the impression that light from the original source actually passed th
 
 Subsurface模型实现核心代码：
 ```
-half4 SUBSUFACE_BRDF_PBS(half3 diffColor, half3 specColor, half oneMinusReflectivity, half smoothness,
+half4 SKIN_BRDF_PBS(half3 diffColor, half3 specColor, half oneMinusReflectivity, half smoothness,
     float3 normal, float3 viewDir,
     UnityLight light, UnityIndirect gi, half4 sssTex)
 {
