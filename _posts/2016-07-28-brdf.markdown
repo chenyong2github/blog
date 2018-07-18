@@ -20,10 +20,108 @@ tags:
 
 ### 3. 结果 
 图中所示的是不同环境光照贴图LOD值的茶壶，左上角为原始贴图，后面LOD值依次变大，很好的表现出茶壶表面的光泽度在依次变低的效果。
-![这里写图片描述](http://img.blog.csdn.net/20160728194039587)
-附图：结合上述原理实现的不同LOD值，不同反射度的房间地面效果：地板和瓷砖
-![这里写图片描述](http://img.blog.csdn.net/20160728194114963) 
+![这里写图片描述](/img/in-post/misc/1.jpg)
 
-参考文章：
+### 4. 附
+结合上述原理实现的不同光滑程度房间地面效果：
+![这里写图片描述](/img/in-post/misc/2.jpg)
+
+shader代码：
+```
+Shader "Scene/Floor" 
+{
+	Properties{
+		_Color("Main Color", Color) = (1,1,1,1)
+		_MainTex("Base (RGB)", 2D) = "white" {}
+		_Detail("Noise", 2D) = "bump" {}
+		_DetailScale("Noise Scale", Range(0, 1)) = 1.0
+		_Intensity("Intenisty", Range(0, 10)) = 1
+		_LOD("Blur", Range(0, 4)) = 0
+		_Emission("Emission (Lightmapper)", Float) = 1.0
+	}
+
+	SubShader{
+		Tags{ "RenderType" = "Opaque" }
+		LOD 300
+
+		CGPROGRAM
+		#pragma surface surf Floor
+		#pragma target 3.0
+
+		inline fixed4 LightingFloor(SurfaceOutput s, UnityGI gi)
+		{
+			fixed diff = max(0, dot(s.Normal, gi.light.dir));
+
+			fixed4 c;
+			c.rgb = s.Albedo * gi.light.color * diff;
+			c.a = s.Alpha;
+
+			#if defined(DIRLIGHTMAP_SEPARATE)
+				#ifdef LIGHTMAP_ON
+					c += UnityLambertLight (s, gi.light2);
+				#endif
+				#ifdef DYNAMICLIGHTMAP_ON
+					c += UnityLambertLight (s, gi.light3);
+				#endif
+			#endif
+
+			#ifdef UNITY_LIGHT_FUNCTION_APPLY_INDIRECT
+				c.rgb += s.Albedo * gi.indirect.diffuse;
+			#endif
+
+			return c;
+		}
+
+		inline void LightingFloor_GI(
+			SurfaceOutput s,
+			UnityGIInput data,
+			inout UnityGI gi)
+		{
+			gi = UnityGlobalIllumination(data, 1.0, s.Normal);
+		}
+
+		sampler2D _MainTex;
+		sampler2D _Detail;
+		fixed _DetailScale;
+		fixed _Intensity;
+		fixed _LOD;
+		fixed4 _Color;
+		fixed _Emission;
+
+		uniform sampler2D _ReflectionTex;
+		uniform half _ReflectionRange;
+
+		struct Input {
+			float2 uv_MainTex;
+			float2 uv_Detail;
+			float4 screenPos;
+		};
+
+		void surf(Input IN, inout SurfaceOutput o) {
+			fixed4 tex = tex2D(_MainTex, IN.uv_MainTex);
+			fixed4 c = tex * _Color;
+
+			fixed3 noise = UnpackNormal(tex2D(_Detail, IN.uv_Detail));
+			float2 screenUV = IN.screenPos.xy / IN.screenPos.w + noise.xy * _DetailScale;
+			half4 uv = half4(screenUV, 0, _LOD);
+			half4 rtRefl = tex2Dlod(_ReflectionTex, uv);
+
+			o.Albedo = c.rgb + _ReflectionRange * _Intensity * rtRefl;
+
+			o.Emission = c.rgb;
+	#if defined (UNITY_PASS_META)
+			o.Emission *= _Emission.rrr;
+	#endif
+			o.Alpha = c.a;
+		}
+		ENDCG 
+	}
+	FallBack "Legacy Shaders/Self-Illumin/VertexLit"
+	CustomEditor "LegacyIlluminShaderGUI"
+}
+
+```
+
+参考文章：<br />
 http://www.cs.ubc.ca/~ghosh/Publications/blurry.pdf
 https://en.wikipedia.org/wiki/Reflection_mapping
