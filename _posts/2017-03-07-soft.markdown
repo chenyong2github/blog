@@ -108,17 +108,25 @@ Shader "Effect/add_depthblend_fog" {
 
 淡化处理的前提是需要场景深度图（depth texture）的支持。在Unity中通过设置场景相机depthTextureMode为DepthTextureMode.Depth打开。_CameraDepthTexture为Depth绘制打开后，shader中可访问的深度贴图内置变量。
 
-##### Z值线性化
+##### 深度值线性化
 
-我们这里讨论OpenGL下的情况，顶点经过透视投影矩阵变换后得到的Z'值取值范围为[-1, 1]，贴图的RGB分量存储范围为[0, 1]，所以Z'值需要再经过[0, 1]线性变换后才能存储。最终Z'值为：
+我们这里讨论OpenGL下的情况，顶点经过透视投影矩阵变换后得到的Z'值取值范围为[-1, 1]，参考文献2:
+
+$$
+	Z' = -\frac{a*Z+b}{Z}
+$$
+
+其中a=$$-\frac{F+N}{F-N}$$, b=$$-\frac{2FN}{F-N}$$，Z值为相机空间下的Z坐标值，F，N分别为相机远裁剪面和近裁剪面。
+
+贴图的RGB分量存储范围为[0, 1]，所以Z'值需要再经过[0, 1]线性变换后才能存储，代入a，b值Z'值展开为：
 
 $$
 	Z' = \frac{F}{F-N} + \frac{N*F}{(F-N)*Z} 
 $$
 
-公式中Z'值也即为从_CameraDepthTexture中取到的深度值，其中Z值为实际相机空间下的深度值，F，N分别表示相机远裁剪面和近裁剪面。
+即为最终从_CameraDepthTexture中存取的深度值。
 
-这时的Z'值与实际的Z值得关系是非线性的（跟1/Z是线性的），Unity给出了线性化处理，看UnityCG.cginc中给出的代码：
+从公式可以看出Z'值与实际的Z值得关系是非线性的（跟1/Z是线性的），Unity给出了线性化处理，看UnityCG.cginc中给出的代码：
 
 ```
 // Z buffer to linear depth
@@ -127,7 +135,7 @@ inline float LinearEyeDepth( float z )
 	return 1.0 / (_ZBufferParams.z * z + _ZBufferParams.w);
 }
 ```
-其中_ZBufferParams为Unity的内置变量，_ZBufferParams.z为$\frac{N-F}{N*F}$，_ZBufferParams.w为$\frac{1}{N}$。Z’值经过LinearEyeDepth变换后得到的值-Z，为实际相机空间下的深度正值，表示距离。
+其中_ZBufferParams为Unity的内置变量，_ZBufferParams.z为$\frac{N-F}{N*F}$，_ZBufferParams.w为$\frac{1}{N}$。Z’值经过LinearEyeDepth处理后的结果为-1/Z。
 
 ### Performance
 
