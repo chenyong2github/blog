@@ -108,7 +108,7 @@ Shader "Effect/add_depthblend_fog" {
 
 淡化处理的前提是需要场景深度图（depth texture）的支持。在Unity中通过设置场景相机depthTextureMode为DepthTextureMode.Depth打开。_CameraDepthTexture为Depth绘制打开后，shader中可访问的深度贴图内置变量。
 
-##### 深度值线性化
+##### 深度值
 
 我们这里讨论OpenGL的情况，顶点经过透视投影矩阵变换后得到的Z'值取值范围为[-1, 1]，参考文献2：
 
@@ -126,16 +126,15 @@ $$
 
 即为最终从_CameraDepthTexture中存取的深度值。
 
-从公式可以看出Z'值与实际的Z值得关系是非线性的（跟1/Z是线性的），Unity给出了线性化处理，看UnityCG.cginc中给出的代码：
+通过深度值重建相机空间Z坐标，看UnityCG.cginc中给出的代码：
 
 ```
-// Z buffer to linear depth
 inline float LinearEyeDepth( float z )
 {
 	return 1.0 / (_ZBufferParams.z * z + _ZBufferParams.w);
 }
 ```
-其中_ZBufferParams为Unity的内置变量，_ZBufferParams.z为$\frac{N-F}{N*F}$，_ZBufferParams.w为$\frac{1}{N}$，Z’值经过LinearEyeDepth处理后的结果为-1/Z。
+其中_ZBufferParams为Unity的内置变量，_ZBufferParams.z为$\frac{N-F}{N*F}$，_ZBufferParams.w为$\frac{1}{N}$，Z’值经过LinearEyeDepth处理后的结果为-Z。
 
 ### Performance
 
