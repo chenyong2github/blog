@@ -110,7 +110,7 @@ Shader "Effect/add_depthblend_fog" {
 
 ##### 深度值线性化
 
-我们这里讨论OpenGL下的情况，顶点经过透视投影矩阵变换后得到的Z'值取值范围为[-1, 1]，参考文献2:
+我们这里讨论OpenGL的情况，顶点经过透视投影矩阵变换后得到的Z'值取值范围为[-1, 1]，参考文献2：
 
 $$
 	Z' = -\frac{a*Z+b}{Z}
@@ -118,7 +118,7 @@ $$
 
 其中a=$$-\frac{F+N}{F-N}$$, b=$$-\frac{2FN}{F-N}$$，Z值为相机空间下的Z坐标值，F，N分别为相机远裁剪面和近裁剪面。
 
-贴图的RGB分量存储范围为[0, 1]，所以Z'值需要再经过[0, 1]线性变换后才能存储，代入a，b值Z'值展开为：
+贴图的RGB分量存储范围为[0, 1]，所以Z'值需要再经过[0, 1]线性变换后才能存储，代入a，b值Z'值变换展开为：
 
 $$
 	Z' = \frac{F}{F-N} + \frac{N*F}{(F-N)*Z} 
@@ -135,7 +135,7 @@ inline float LinearEyeDepth( float z )
 	return 1.0 / (_ZBufferParams.z * z + _ZBufferParams.w);
 }
 ```
-其中_ZBufferParams为Unity的内置变量，_ZBufferParams.z为$\frac{N-F}{N*F}$，_ZBufferParams.w为$\frac{1}{N}$。Z’值经过LinearEyeDepth处理后的结果为-1/Z。
+其中_ZBufferParams为Unity的内置变量，_ZBufferParams.z为$\frac{N-F}{N*F}$，_ZBufferParams.w为$\frac{1}{N}$，Z’值经过LinearEyeDepth处理后的结果为-1/Z。
 
 ### Performance
 
