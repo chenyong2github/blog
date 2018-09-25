@@ -1,0 +1,312 @@
+---
+layout:     post
+title:      "Screen Space Shadow Mapping"
+date:       2018-09-18
+author:     "ChenYong"
+header-img: "img/post-bg-thinking.jpg"
+tags:
+    - Unity
+    - Graphics
+    - Shadow
+    - 原创
+---
+
+### 前言
+大概在一年前的西山居开发者讨论会上，我问了一个我当时挺疑惑的问题，大概是：怎么理解Unity内置的Screen Space Shadow Mapping？它跟普通的Shadow Mapping有什么不同？
+当时并没有人能够回答我，直到最近我顿悟到一些理解，记录分享一下。
+
+### 分析
+Shadow Mapping的实现简单来说分为2个步骤：<br />
+1.从光源的视角渲染整个场景，获得Shadow Map，Shadow Map存放的是场景中距离光源最近的深度信息。<br />
+2.实际摄像机渲染物体，将物体从世界坐标转换到光源视角下，得到的深度与Shadow Map采样得到的深度信息比较，根据是否在阴影中做明暗渲染处理。
+
+准确来说，上述第2步的描述只是针对Foward渲染模式——对物体做光照计算的同时做阴影计算。
+
+**Foward渲染模式是存在overdraw的，对片段的光照计算（包括阴影）可能会被浪费掉。后来的Deferred渲染模式消除了overdraw，渲染计算只对会在屏幕上显示的像素进行，也就是说光照计算是在屏幕空间里进行的，包括阴影。**
+>The expensive lighting calculations have to execute for each visible fragment of every polygon on the screen, 
+regardless if it overlaps or is hidden by another polygon's fragments. 
+If your screen has a resolution of 1024x768 (which is, by all means, not very high-res) 
+you have nearly 800,000 pixels that need to be rendered. You could easily reach a million fragment operations every frame. 
+Also, many of the fragments will never make it to the screen because they were removed with depth testing, 
+and thus the lighting calculation was wasted on them.<br />
+The formula for estimating this forward rendering complexity can be written, in big O notation, as O(num_geometry_fragments * num_lights).
+
+>Deferred Rendering is a very interesting approach that reduces the object count, and in particular the total fragment count, 
+and performs the lighting calculations on the pixels on the screen, thereby using the resolution size instead of the total fragment count.<br />
+The complexity of deferred rendering, in big O notation, is: O(screen_resolution * num_lights).
+
+Screen Space Shadow Mapping正是Deferred渲染的阴影计算方式。那它可不可以在Foward渲染模式下用呢？答案是可以的，而且Unity的Forward渲染中默认的阴影方式也是Screen Space Shadow Mapping。
+
+主要的步骤如下：<br />
+>1.首先得到从当前摄像机处观察到的深度纹理。在延迟渲染里这张深度图本来就有，如果是前向渲染的话就需要把场景整个渲染一遍，把深度渲染到深度图中。<br />
+2.然后再从光源出发得到从该光源处观察到的深度纹理，也被称为这个光源的ShadowMap。<br />
+3.然后在屏幕空间做一次阴影收集计算（Shadows Collector），这次计算会得到一张屏幕空间阴影纹理，也就是说这张图里面需要有阴影的部分已经显示在图上了。这个过程概括来说就是把每一个像素根据它在摄像机深度纹理中的深度值得到世界空间坐标，再把它的坐标从世界空间转换到光源空间中，和光源的ShadowMap里面的深度值对比，如果大于ShadowMap中的深度距离，那么就说明光源无法照到，在阴影内。<br />
+4.最后，在正常渲染物体为它计算阴影的时候，只需要按照当前处理的fragment在屏幕空间中的位置对步骤3得到的屏幕空间阴影图采样就可以了。
+
+### 实现
+下面列出用Unity实现的大致步骤。
+
+1.在当前摄像机出创建深度相机，得到深度纹理：
+
+C#代码：
+```
+public Camera CreateDepthCamera()
+{
+    GameObject goDepthCamera = new GameObject("Depth Camera");
+    Camera depthCamera = goDepthCamera.AddComponent<Camera>();
+
+    depthCamera.CopyFrom(Camera.main);
+    depthCamera.backgroundColor = Color.white;
+    depthCamera.clearFlags = CameraClearFlags.SolidColor;
+    depthCamera.enabled = false;
+
+    if (!depthCamera.targetTexture)
+        depthCamera.targetTexture = depthTexture = CreateTextureFor(depthCamera);
+
+    Shader.SetGlobalTexture("_DepthTexture", depthTexture);
+
+    return depthCamera;
+}
+```
+
+```
+	_depthCamera = CreateDepthCamera();
+	_depthCamera.RenderWithShader(shadowCasterMat.shader, "");
+```
+
+shader代码：
+```
+Shader "Kingsoft/CustomShadow/Caster" 
+{
+	SubShader {
+		Tags { 			
+		    "RenderType" = "Opaque"
+		}
+		Pass {
+			Fog { Mode Off }
+//			Cull Front
+
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+	 
+			#include "UnityCG.cginc"
+	
+			struct v2f {
+				float4 pos : SV_POSITION;
+				float2 depth:TEXCOORD0;
+			};
+	
+		
+			v2f vert (appdata_full v)
+			{
+				v2f o;
+				o.pos = UnityObjectToClipPos(v.vertex);
+				o.depth = o.pos.zw;
+				return o;
+			}
+		
+			fixed4 frag (v2f i) : COLOR
+			{
+				float depth = i.depth.x/i.depth.y;
+#if defined(SHADER_API_GLES) || defined(SHADER_API_GLES3)
+			depth = depth*0.5 + 0.5; //(-1, 1)-->(0, 1)
+#elif defined (UNITY_REVERSED_Z)
+			depth = 1 - depth;       //(1, 0)-->(0, 1)
+#endif
+				//return EncodeFloatRGBA(depth);
+				return depth;
+			}
+			ENDCG 
+		}	
+	}
+}
+```
+![这里写图片描述](/img/in-post/sssm/1.jpg)
+<center>当前摄像机处观察到的深度纹理</center>
+
+2.在光源处创建深度相机，得到光源的ShadowMap：
+
+C#代码：
+```
+public Camera CreateLightCamera()
+{
+    GameObject goLightCamera = new GameObject("Shadow Camera");
+    Camera LightCamera = goLightCamera.AddComponent<Camera>();
+
+    LightCamera.cullingMask = 1 << LayerMask.NameToLayer("Pawn") | 1 << LayerMask.NameToLayer("Monster");
+    LightCamera.backgroundColor = Color.white;
+    LightCamera.clearFlags = CameraClearFlags.SolidColor;
+    LightCamera.orthographic = true;
+    LightCamera.orthographicSize = 6f;
+    LightCamera.nearClipPlane = 0.3f;
+    LightCamera.farClipPlane = 20;
+    LightCamera.enabled = false;
+
+    if (!LightCamera.targetTexture)
+        LightCamera.targetTexture = lightDepthTexture = CreateTextureFor(LightCamera);
+
+    return LightCamera;
+}
+
+```
+	_lightCamera = CreateLightCamera();
+	_lightCamera.RenderWithShader(shadowCasterMat.shader, "");
+```
+
+![这里写图片描述](/img/in-post/sssm/2.jpg)
+<center>光源摄像机处观察到的深度纹理</center>
+
+3.在光源处创建深度相机，得到光源的ShadowMap：
+
+C#代码：
+```
+    // shadow collector
+    if (screenSpaceShadowTexture == null)
+    {
+        screenSpaceShadowTexture = new RenderTexture(Screen.width * qulity, Screen.height * qulity, 0, RenderTextureFormat.Default);
+        screenSpaceShadowTexture.hideFlags = HideFlags.DontSave;
+    }
+
+    Matrix4x4 projectionMatrix = GL.GetGPUProjectionMatrix(Camera.main.projectionMatrix, false);
+    Shader.SetGlobalMatrix("_inverseVP", Matrix4x4.Inverse(projectionMatrix * Camera.main.worldToCameraMatrix));
+
+    shadowCollectorMat.SetTexture("_CameraDepthTex", depthTexture);
+    shadowCollectorMat.SetTexture("_LightDepthTex", lightDepthTexture);
+    Graphics.Blit(depthTexture, screenSpaceShadowTexture, shadowCollectorMat);
+
+    Shader.SetGlobalTexture("_ScreenSpceShadowTexture", screenSpaceShadowTexture);
+
+    projectionMatrix = GL.GetGPUProjectionMatrix(_lightCamera.projectionMatrix, false);
+    Shader.SetGlobalMatrix("_WorldToShadow", projectionMatrix * _lightCamera.worldToCameraMatrix);
+```
+
+shader代码：
+
+```
+Shader "Kingsoft/CustomShadow/Collector" 
+{
+	Subshader 
+	{
+		ZTest off 
+		Fog { Mode Off }
+		Cull back
+		Lighting Off
+		ZWrite Off
+		
+		Pass 
+		{
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			#pragma fragmentoption ARB_precision_hint_fastest
+			
+			uniform sampler2D _CameraDepthTex;
+			uniform sampler2D _LightDepthTex;
+
+			uniform float4x4 _inverseVP;
+			uniform float4x4 _WorldToShadow;
+
+			struct Input
+			{
+				float4 texcoord : TEXCOORD0;
+				float4 vertex : POSITION;
+			};
+			
+			struct Output 
+			{
+				float4 pos : SV_POSITION;
+				float2 uv : TEXCOORD0;
+			};
+			
+			Output vert (Input i)
+			{
+				Output o;
+				o.pos = UnityObjectToClipPos (i.vertex);
+				o.uv = i.texcoord;
+				
+				return o;
+			}
+
+			fixed4 frag( Output i ) : SV_TARGET
+			{
+				fixed4 cameraDepth = tex2D(_CameraDepthTex, i.uv);
+				half depth_ = cameraDepth.r;
+#if defined (SHADER_TARGET_GLSL) 
+				depth_ = depth_ * 2 - 1;	 // (0, 1)-->(-1, 1)
+#elif defined (UNITY_REVERSED_Z)
+				depth_ = 1 - depth_;       // (0, 1)-->(1, 0)
+#endif
+
+				// reconstruct world position by depth;
+				float4 clipPos;
+				clipPos.xy = i.uv * 2 - 1;
+				clipPos.z = depth_;
+				clipPos.w = 1;
+
+				float4 posWorld = mul(_inverseVP, clipPos);
+				posWorld /= posWorld.w;
+
+				half4 shadowCoord = mul(_WorldToShadow, posWorld);
+
+				half2 uv = shadowCoord.xy;
+				uv = uv*0.5 + 0.5; //(-1, 1)-->(0, 1)
+
+				half depth = shadowCoord.z / shadowCoord.w;
+#if defined(SHADER_API_GLES) || defined(SHADER_API_GLES3)
+				depth = depth*0.5 + 0.5; //(-1, 1)-->(0, 1)
+#elif defined (UNITY_REVERSED_Z)
+				depth = 1 - depth;       //(1, 0)-->(0, 1)
+#endif
+
+				half4 col = tex2D(_LightDepthTex, uv);
+				half sampleDepth = col.r;
+
+				half shadow = (sampleDepth < depth - 0.05) ? 0.1 : 1;
+
+				return shadow;
+			}
+			ENDCG
+		}
+	}
+	Fallback off
+}
+```
+![这里写图片描述](/img/in-post/sssm/3.jpg)
+<center>Shadows Collector得到的屏幕空间阴影纹理</center>
+
+4.最后在正常渲染物体时，用屏幕坐标采样屏幕空间阴影纹理：
+```		
+	v2f_full vert (appdata_full v) 
+	{
+		v2f_full o;
+		o.pos = UnityObjectToClipPos (v.vertex);
+		o.uv.xy = TRANSFORM_TEX(v.texcoord,_MainTex);
+		o.screenPos = o.pos;
+		return o; 
+	}
+				
+	fixed4 frag (v2f_full i) : COLOR0 
+	{						
+		fixed4 tex = tex2D (_MainTex, i.uv.xy)*_Color;
+
+		i.screenPos.xy = i.screenPos.xy / i.screenPos.w;
+		float2 sceneUVs = i.screenPos.xy*0.5 + 0.5;
+#if UNITY_UV_STARTS_AT_TOP
+		sceneUVs.y = _ProjectionParams.x < 0 ? 1 - sceneUVs.y : sceneUVs.y;
+#endif
+
+		half shadow = tex2D(_ScreenSpceShadowTexture, sceneUVs).r;
+		fixed4 c = tex2D(_MainTex, i.uv.xy) * _Color * shadow;
+
+		return c;
+	}	
+```
+![这里写图片描述](/img/in-post/sssm/4.jpg)
+<center>正常渲染物体屏幕空间阴影图采样</center>
+
+参考文献：<br />
+http://geekfaner.com/unity/blog3_ShadowMap.html
+https://www.cnblogs.com/zsb517/p/6817373.html
+https://gamedevelopment.tutsplus.com/articles/forward-rendering-vs-deferred-rendering--gamedev-12342 <br />
+https://www.zhihu.com/question/52718833
