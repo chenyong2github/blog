@@ -336,10 +336,10 @@ Shader "Kingsoft/CustomShadow/Collector"
 ![这里写图片描述](/img/in-post/sssm/4.jpg)
 <center>正常渲染物体时，采样屏幕空间阴影图</center>
 
-完整实现代码见：https://github.com/chenyong2github/ScreenSpaceShadowMapping
+完整实现代码：https://github.com/chenyong2github/ScreenSpaceShadowMapping
 
 ### 结论
-Screen Space Shadow Mapping继承了Deferred渲染的思想，计算复杂度与场景复杂度无关，但前提是要获得场景深度。在复杂场景且深度已有的实际情况下，
+Screen Space Shadow Mapping继承了Deferred渲染的思想——计算复杂度与场景的复杂程度无关，前提是要获得场景深度。在场景复杂且深度已有的情况下，
 应该具有很大的效率优势。
 
 参考文献：<br />
