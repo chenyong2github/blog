@@ -272,10 +272,41 @@ Shader "Kingsoft/CustomShadow/Collector"
 	Fallback off
 }
 ```
+其中，关键代码为**用深度信息重建世界坐标**，变换矩阵_inverseVP在C#生成传入：
+
+```
+	// reconstruct world position by depth;
+	float4 clipPos;
+	clipPos.xy = i.uv * 2 - 1;
+	clipPos.z = depth_;
+	clipPos.w = 1;
+
+	float4 posWorld = mul(_inverseVP, clipPos);
+	posWorld /= posWorld.w;
+```
+
+```
+	Matrix4x4 projectionMatrix = GL.GetGPUProjectionMatrix(Camera.main.projectionMatrix, false);
+	Shader.SetGlobalMatrix("_inverseVP", Matrix4x4.Inverse(projectionMatrix * Camera.main.worldToCameraMatrix));
+```
+
+接下来把世界坐标转换到光源空间中，和光源的ShadowMap里面的深度值对比，获得是否在阴影中跟普通的Shadow Mapping类似。
+
+最后把结果输出到屏幕空间阴影纹理：
+
+```
+    shadowCollectorMat.SetTexture("_CameraDepthTex", depthTexture);
+    shadowCollectorMat.SetTexture("_LightDepthTex", lightDepthTexture);
+    Graphics.Blit(depthTexture, screenSpaceShadowTexture, shadowCollectorMat);
+
+    Shader.SetGlobalTexture("_ScreenSpceShadowTexture", screenSpaceShadowTexture);
+```
+
 ![这里写图片描述](/img/in-post/sssm/3.jpg)
 <center>Shadows Collector得到的屏幕空间阴影纹理</center>
 
-4.最后在正常渲染物体时，用屏幕坐标采样屏幕空间阴影纹理：
+4.最后在正常渲染物体时，用**屏幕坐标采样屏幕空间阴影纹理**：
+
 ```		
 	v2f_full vert (appdata_full v) 
 	{
@@ -303,7 +334,13 @@ Shader "Kingsoft/CustomShadow/Collector"
 	}	
 ```
 ![这里写图片描述](/img/in-post/sssm/4.jpg)
-<center>正常渲染物体屏幕空间阴影图采样</center>
+<center>正常渲染物体时，采样屏幕空间阴影图</center>
+
+完整实现代码见：https://github.com/chenyong2github/ScreenSpaceShadowMapping
+
+### 结论
+Screen Space Shadow Mapping继承了Deferred渲染的思想，计算复杂度与场景复杂度无关，但前提是要获得场景深度。在复杂场景且深度已有的实际情况下，
+应该具有很大的效率优势。
 
 参考文献：<br />
 http://geekfaner.com/unity/blog3_ShadowMap.html
