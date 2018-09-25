@@ -16,7 +16,7 @@ tags:
 当时并没有人能够回答我，直到最近我顿悟到一些理解，记录分享一下。
 
 ### 分析
-Shadow Mapping的实现简单来说分为2个步骤：<br />
+首先，普通的Shadow Mapping的实现分为2个步骤：<br />
 1.从光源的视角渲染整个场景，获得Shadow Map，Shadow Map存放的是场景中距离光源最近的深度信息。<br />
 2.实际摄像机渲染物体，将物体从世界坐标转换到光源视角下，得到的深度与Shadow Map采样得到的深度信息比较，根据是否在阴影中做明暗渲染处理。
 
@@ -157,7 +157,7 @@ public Camera CreateLightCamera()
 ![这里写图片描述](/img/in-post/sssm/2.jpg)
 <center>光源摄像机处观察到的深度纹理</center>
 
-3.在光源处创建深度相机，得到光源的ShadowMap：
+3.在屏幕空间做一次阴影收集：
 
 C#代码：
 ```
