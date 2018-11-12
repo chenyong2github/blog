@@ -1,0 +1,17 @@
+---
+layout:     post
+title:      "新的技术博客地址"
+date:       2018-11-12
+author:     "ChenYong"
+header-img: "img/post-bg-2015.jpg"
+tags:
+    - 闲谈
+---
+
+### 技术博客挪到知乎
+
+https://www.zhihu.com/people/chen-yong-59-86/posts
+
+### 知乎上开了个专栏
+
+https://zhuanlan.zhihu.com/chenyong2vulkan
